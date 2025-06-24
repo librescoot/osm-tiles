@@ -48,7 +48,7 @@ jobs:
             -source ${{ matrix.state.url }} \
             -out /tmp/artifacts/tiles_${{ matrix.state.name }}.mbtiles \
             -remove addresses,aerialways,boundaries,boundary_labels,bridges,buildings,dam_lines,ferries,ocean,pier_lines,pier_polygons,place_labels,pois,public_transport,street_polygons,street_labels_points,streets_polygons_labels,sites,water_lines,water_lines_labels,water_polygons_labels \
-            -street track,path,service,unclassified,residential,tertiary,secondary,primary,trunk,living_street,pedestrian,taxiway,busway
+            -streets track,path,service,unclassified,residential,tertiary,secondary,primary,trunk,living_street,pedestrian,taxiway,busway
 
       - name: Upload Build Artifact for ${{ matrix.state.name }}
         uses: actions/upload-artifact@v4

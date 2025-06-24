@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -467,6 +468,11 @@ func moveFile(src, dst string) error {
 		return fmt.Errorf("open source file: %w", err)
 	}
 	defer srcFile.Close()
+
+	err = os.MkdirAll(filepath.Dir(dst), 0755)
+	if err != nil {
+		return fmt.Errorf("create destination directory: %w", err)
+	}
 
 	dstFile, err := os.Create(dst)
 	if err != nil {

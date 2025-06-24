@@ -14,22 +14,22 @@ jobs:
     strategy:
       matrix:
         state:
-          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-shortbread-1.0.mbtiles" }
-          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-shortbread-1.0.mbtiles" }
-          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-shortbread-1.0.mbtiles" }
-          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-shortbread-1.0.mbtiles" }
+#          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-shortbread-1.0.mbtiles" }
+#          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-shortbread-1.0.mbtiles" }
+#          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-shortbread-1.0.mbtiles" }
+#          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-shortbread-1.0.mbtiles" }
           - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-shortbread-1.0.mbtiles" }
-          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-shortbread-1.0.mbtiles" }
-          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-shortbread-1.0.mbtiles" }
-          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-shortbread-1.0.mbtiles" }
-          - { name: "niedersachsen", url: "https://download.geofabrik.de/europe/germany/niedersachsen-shortbread-1.0.mbtiles" }
-          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-shortbread-1.0.mbtiles" }
-          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-shortbread-1.0.mbtiles" }
-          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-shortbread-1.0.mbtiles" }
-          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-shortbread-1.0.mbtiles" }
-          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-shortbread-1.0.mbtiles" }
-          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-shortbread-1.0.mbtiles" }
-          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-shortbread-1.0.mbtiles" }
+#          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-shortbread-1.0.mbtiles" }
+#          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-shortbread-1.0.mbtiles" }
+#          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-shortbread-1.0.mbtiles" }
+#          - { name: "niedersachsen", url: "https://download.geofabrik.de/europe/germany/niedersachsen-shortbread-1.0.mbtiles" }
+#          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-shortbread-1.0.mbtiles" }
+#          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-shortbread-1.0.mbtiles" }
+#          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-shortbread-1.0.mbtiles" }
+#          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-shortbread-1.0.mbtiles" }
+#          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-shortbread-1.0.mbtiles" }
+#          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-shortbread-1.0.mbtiles" }
+#          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-shortbread-1.0.mbtiles" }
     steps:
       - uses: actions/checkout@v4
 

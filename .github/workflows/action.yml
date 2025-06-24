@@ -26,7 +26,7 @@ jobs:
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: osm_tiles_binary
+          name: builder
           path: osm-tiles
   generate_tiles:
     needs: build
@@ -34,26 +34,26 @@ jobs:
     strategy:
       matrix:
         state:
-#          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-shortbread-1.0.mbtiles" }
-#          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-shortbread-1.0.mbtiles" }
-#          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-shortbread-1.0.mbtiles" }
-#          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-shortbread-1.0.mbtiles" }
+          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-shortbread-1.0.mbtiles" }
+          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-shortbread-1.0.mbtiles" }
+          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-shortbread-1.0.mbtiles" }
+          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-shortbread-1.0.mbtiles" }
           - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-shortbread-1.0.mbtiles" }
-#          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-shortbread-1.0.mbtiles" }
-#          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-shortbread-1.0.mbtiles" }
-#          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-shortbread-1.0.mbtiles" }
-#          - { name: "niedersachsen", url: "https://download.geofabrik.de/europe/germany/niedersachsen-shortbread-1.0.mbtiles" }
-#          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-shortbread-1.0.mbtiles" }
-#          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-shortbread-1.0.mbtiles" }
-#          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-shortbread-1.0.mbtiles" }
-#          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-shortbread-1.0.mbtiles" }
-#          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-shortbread-1.0.mbtiles" }
-#          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-shortbread-1.0.mbtiles" }
-#          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-shortbread-1.0.mbtiles" }
+          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-shortbread-1.0.mbtiles" }
+          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-shortbread-1.0.mbtiles" }
+          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-shortbread-1.0.mbtiles" }
+          - { name: "niedersachsen", url: "https://download.geofabrik.de/europe/germany/niedersachsen-shortbread-1.0.mbtiles" }
+          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-shortbread-1.0.mbtiles" }
+          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-shortbread-1.0.mbtiles" }
+          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-shortbread-1.0.mbtiles" }
+          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-shortbread-1.0.mbtiles" }
+          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-shortbread-1.0.mbtiles" }
+          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-shortbread-1.0.mbtiles" }
+          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-shortbread-1.0.mbtiles" }
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: osm_tiles_binary
+          name: builder
 
       - name: Run osm-tiles for ${{ matrix.state.name }}
         run: |
@@ -70,26 +70,27 @@ jobs:
           name: osm_tiles_${{ matrix.state.name }}
           path: /tmp/artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
-#  release:
-#    needs: generate_tiles
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: Download All Build Artifacts
-#        uses: actions/download-artifact@v4
-#        with:
-#          path: artifacts
-#
-#      - name: List All Artifacts
-#        run: |
-#          echo "Listing all downloaded artifacts:"
-#          find artifacts -name "*.tar" -type f
-#
-#      - name: Create Automatic Release
-#        uses: marvinpinto/action-automatic-releases@latest
-#        with:
-#          repo_token: ${{ secrets.GITHUB_TOKEN }}
-#          prerelease: false
-#          automatic_release_tag: latest
-#          title: "Valhalla Tiles - German States (Individual Packages)"
-#          files: |
-#            artifacts/**/*
+  release:
+    needs: generate_tiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: 'osm_tiles_*'
+
+      - name: List All Artifacts
+        run: |
+          echo "Listing all downloaded artifacts:"
+          find artifacts -name "*.tar" -type f
+
+      - name: Create Automatic Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: false
+          automatic_release_tag: latest
+          title: "OSM Tiles - German States (Individual Packages)"
+          files: |
+            artifacts/**/*

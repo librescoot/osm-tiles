@@ -9,7 +9,27 @@ on:
   workflow_dispatch:
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build osm-tiles binary
+        run: |
+          go build -o osm-tiles
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: osm_tiles_binary
+          path: osm-tiles
   generate_tiles:
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -31,16 +51,9 @@ jobs:
 #          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-shortbread-1.0.mbtiles" }
 #          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-shortbread-1.0.mbtiles" }
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/download-artifact@v4
         with:
-          go-version: '1.24'
-
-      - name: Build osm-tiles binary
-        run: |
-          go build -o osm-tiles
+          name: osm_tiles_binary
 
       - name: Run osm-tiles for ${{ matrix.state.name }}
         run: |

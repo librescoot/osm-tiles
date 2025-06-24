@@ -5,7 +5,7 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 3 * * 1'
+    - cron: '0 5 3 * *'
   workflow_dispatch:
 
 jobs:
@@ -80,10 +80,9 @@ jobs:
           path: artifacts
           pattern: 'osm_tiles_*'
 
-      - name: List All Artifacts
-        run: |
-          echo "Listing all downloaded artifacts:"
-          find artifacts -name "*.tar" -type f
+      - name: Set release month variable
+        id: date
+        run: echo "month=$(date '+%B %Y')" >> $GITHUB_OUTPUT
 
       - name: Create Automatic Release
         uses: marvinpinto/action-automatic-releases@latest
@@ -91,6 +90,6 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: false
           automatic_release_tag: latest
-          title: "OSM Tiles - German States (Individual Packages)"
+          title: "OSM Tiles - German States (${{ steps.date.outputs.month }})"
           files: |
             artifacts/**/*

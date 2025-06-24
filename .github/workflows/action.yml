@@ -31,6 +31,8 @@ jobs:
           - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-shortbread-1.0.mbtiles" }
           - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-shortbread-1.0.mbtiles" }
     steps:
+      - uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:

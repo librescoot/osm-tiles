@@ -57,6 +57,7 @@ jobs:
 
       - name: Run osm-tiles for ${{ matrix.state.name }}
         run: |
+          chmod +x osm-tiles && \
           ./osm-tiles \
             -source ${{ matrix.state.url }} \
             -out /tmp/artifacts/tiles_${{ matrix.state.name }}.mbtiles \

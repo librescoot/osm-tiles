@@ -1,0 +1,79 @@
+name: Automatic OSM Tile Transformation and Release - German States
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  generate_tiles:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        state:
+          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-shortbread-1.0.mbtiles" }
+          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-shortbread-1.0.mbtiles" }
+          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-shortbread-1.0.mbtiles" }
+          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-shortbread-1.0.mbtiles" }
+          - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-shortbread-1.0.mbtiles" }
+          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-shortbread-1.0.mbtiles" }
+          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-shortbread-1.0.mbtiles" }
+          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-shortbread-1.0.mbtiles" }
+          - { name: "niedersachsen", url: "https://download.geofabrik.de/europe/germany/niedersachsen-shortbread-1.0.mbtiles" }
+          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-shortbread-1.0.mbtiles" }
+          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-shortbread-1.0.mbtiles" }
+          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-shortbread-1.0.mbtiles" }
+          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-shortbread-1.0.mbtiles" }
+          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-shortbread-1.0.mbtiles" }
+          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-shortbread-1.0.mbtiles" }
+          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-shortbread-1.0.mbtiles" }
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build osm-tiles binary
+        run: |
+          go build -o osm-tiles
+
+      - name: Run osm-tiles for ${{ matrix.state.name }}
+        run: |
+          ./osm-tiles \
+            -source ${{ matrix.state.url }} \
+            -out /tmp/artifacts/tiles_${{ matrix.state.name }}.mbtiles \
+            -remove addresses,aerialways,boundaries,boundary_labels,bridges,buildings,dam_lines,ferries,ocean,pier_lines,pier_polygons,place_labels,pois,public_transport,street_polygons,street_labels_points,streets_polygons_labels,sites,water_lines,water_lines_labels,water_polygons_labels \
+            -street track,path,service,unclassified,residential,tertiary,secondary,primary,trunk,living_street,pedestrian,taxiway,busway
+
+      - name: Upload Build Artifact for ${{ matrix.state.name }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: osm_tiles_${{ matrix.state.name }}
+          path: /tmp/artifacts/tiles_${{ matrix.state.name }}.mbtiles
+
+#  release:
+#    needs: generate_tiles
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Download All Build Artifacts
+#        uses: actions/download-artifact@v4
+#        with:
+#          path: artifacts
+#
+#      - name: List All Artifacts
+#        run: |
+#          echo "Listing all downloaded artifacts:"
+#          find artifacts -name "*.tar" -type f
+#
+#      - name: Create Automatic Release
+#        uses: marvinpinto/action-automatic-releases@latest
+#        with:
+#          repo_token: ${{ secrets.GITHUB_TOKEN }}
+#          prerelease: false
+#          automatic_release_tag: latest
+#          title: "Valhalla Tiles - German States (Individual Packages)"
+#          files: |
+#            artifacts/**/*

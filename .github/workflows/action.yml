@@ -14,23 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-        env:
-          CGO_ENABLED: 1
+      - name: Build Docker image
+        run: docker build -t osm-builder .
 
-      - name: Build osm-tiles binary
+      - name: Build osm-tiles binary using Docker
         run: |
-          go env -w CGO_ENABLED=1
-          go build -o osm-tiles
+          mkdir -p ./build_output
+          docker run --rm -v ./build_output:/output osm-builder go build -o /output/osm-tiles .
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: builder
-          path: osm-tiles
+          path: ./build_output/osm-tiles
   generate_tiles:
     needs: build
     runs-on: self-hosted

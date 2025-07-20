@@ -21,7 +21,9 @@ jobs:
 
       - name: Build osm-tiles binary
         run: |
-          CGO_ENABLED=1 go build -o osm-tiles
+          go build -o osm-tiles
+        env:
+          CGO_ENABLED: 1
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4

@@ -8,6 +8,10 @@
 # Temporary files
 /tmp/
 *.tmp
+*.log
+
+# Test scripts
+test-local.sh
 
 # Docker artifacts
 .docker/

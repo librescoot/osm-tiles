@@ -52,151 +52,187 @@ function node_function(node)
 end
 
 -- Way function: process roads and water features
-function way_function(way)
-    local highway = way:Find("highway")
-    local waterway = way:Find("waterway")
-    local natural = way:Find("natural")
+function way_function()
+    local highway = Find("highway")
+    local waterway = Find("waterway")
+    local natural = Find("natural")
 
     -- Process streets/roads
     if highway ~= "" and street_types[highway] then
-        process_street(way, highway)
+        process_street(highway)
+        -- Also create street label (only if street has a name or ref)
+        local name = Find("name")
+        local ref = Find("ref")
+        if name ~= "" or ref ~= "" then
+            process_street_label(highway, name, ref)
+        end
         return
     end
 
     -- Process waterways as lines (not polygons)
-    -- Polygonal water features handled in area_function
+    if waterway ~= "" and waterway ~= "riverbank" then
+        process_water_line(waterway)
+        return
+    end
 end
 
 -- Area function: process water polygons and land
-function area_function(way)
-    local natural = way:Find("natural")
-    local waterway = way:Find("waterway")
-    local water = way:Find("water")
-    local landuse = way:Find("landuse")
+function area_function()
+    local natural = Find("natural")
+    local waterway = Find("waterway")
+    local water = Find("water")
+    local landuse = Find("landuse")
+    local leisure = Find("leisure")
 
     -- Process water polygons
     if natural == "water" or water ~= "" or waterway == "riverbank" then
-        process_water_polygon(way, natural, water)
+        process_water_polygon(natural, water)
         return
     end
 
-    -- Process land (everything else that forms the base layer)
-    if natural == "wood" or natural == "grassland" or natural == "scrub" or
-       landuse == "forest" or landuse == "grass" or landuse == "meadow" or
-       landuse == "farmland" or landuse == "residential" or landuse == "commercial" then
-        process_land(way, natural, landuse)
+    -- Process ALL land features - include any polygon with natural, landuse, or leisure tags
+    -- This is more future-proof and includes everything scootui might need
+    if natural ~= "" or landuse ~= "" or leisure ~= "" then
+        process_land(natural, landuse, leisure)
         return
     end
 end
 
 -- Process street features
-function process_street(way, highway)
-    way:Layer("streets", false) -- false = linestring, not polygon
-    way:Attribute("kind", highway)
+function process_street(highway)
+    Layer("streets", false) -- false = linestring, not polygon
+    Attribute("kind", highway)
 
     -- Extract name
-    local name = way:Find("name")
+    local name = Find("name")
     if name ~= "" then
-        way:Attribute("name", name)
+        Attribute("name", name)
     end
 
     -- Extract reference (road number like "A7", "B27")
-    local ref = way:Find("ref")
+    local ref = Find("ref")
     if ref ~= "" then
-        way:Attribute("ref", ref)
+        Attribute("ref", ref)
     end
 
     -- CRITICAL: Extract maxspeed (speed limit)
-    local maxspeed = way:Find("maxspeed")
+    local maxspeed = Find("maxspeed")
     if maxspeed ~= "" then
-        way:Attribute("maxspeed", maxspeed)
+        Attribute("maxspeed", maxspeed)
     end
 
     -- Extract oneway information
-    local oneway = way:Find("oneway")
+    local oneway = Find("oneway")
     if oneway == "yes" then
-        way:AttributeBoolean("oneway", true)
+        AttributeBoolean("oneway", true)
     elseif oneway == "-1" then
-        way:AttributeBoolean("oneway_reverse", true)
+        AttributeBoolean("oneway_reverse", true)
     end
 
     -- Extract bridge/tunnel information
-    local bridge = way:Find("bridge")
+    local bridge = Find("bridge")
     if bridge == "yes" then
-        way:AttributeBoolean("bridge", true)
+        AttributeBoolean("bridge", true)
     end
 
-    local tunnel = way:Find("tunnel")
+    local tunnel = Find("tunnel")
     if tunnel == "yes" then
-        way:AttributeBoolean("tunnel", true)
+        AttributeBoolean("tunnel", true)
     end
 
     -- Extract surface type
-    local surface = way:Find("surface")
+    local surface = Find("surface")
     if surface ~= "" then
-        way:Attribute("surface", surface)
+        Attribute("surface", surface)
     end
 
     -- Extract lanes if available
-    local lanes = way:Find("lanes")
+    local lanes = Find("lanes")
     if lanes ~= "" then
-        way:Attribute("lanes", lanes)
+        Attribute("lanes", lanes)
     end
 
     -- Set minimum zoom based on road type
     if highway == "motorway" or highway == "trunk" then
-        way:MinZoom(10)
+        MinZoom(10)
     elseif highway == "primary" then
-        way:MinZoom(11)
+        MinZoom(11)
     elseif highway == "secondary" then
-        way:MinZoom(12)
+        MinZoom(12)
     elseif highway == "tertiary" then
-        way:MinZoom(13)
+        MinZoom(13)
     else
-        way:MinZoom(14)
+        MinZoom(14)
     end
 end
 
 -- Process water polygon features
-function process_water_polygon(way, natural, water)
-    way:Layer("water_polygons", true) -- true = polygon
+function process_water_polygon(natural, water)
+    Layer("water_polygons", true) -- true = polygon
 
     -- Set kind based on water type
     if water ~= "" then
-        way:Attribute("kind", water)
+        Attribute("kind", water)
     elseif natural == "water" then
-        way:Attribute("kind", "water")
+        Attribute("kind", "water")
     else
-        way:Attribute("kind", "water")
+        Attribute("kind", "water")
     end
 
     -- Extract name if available
-    local name = way:Find("name")
+    local name = Find("name")
     if name ~= "" then
-        way:Attribute("name", name)
+        Attribute("name", name)
     end
 
     -- Set zoom levels based on size
     -- Larger water bodies appear at lower zoom levels
-    local area = way:Area()
+    local area = Area()
     if area > 1000000 then -- Very large (lakes, reservoirs)
-        way:MinZoom(6)
+        MinZoom(6)
     elseif area > 100000 then -- Large
-        way:MinZoom(8)
+        MinZoom(8)
     elseif area > 10000 then -- Medium
-        way:MinZoom(10)
+        MinZoom(10)
     else -- Small
-        way:MinZoom(12)
+        MinZoom(12)
+    end
+end
+
+-- Process water line features (rivers, streams, canals, etc.)
+function process_water_line(waterway)
+    Layer("water_lines", false) -- false = linestring
+
+    -- Set kind based on waterway type
+    Attribute("kind", waterway)
+
+    -- Extract name if available
+    local name = Find("name")
+    if name ~= "" then
+        Attribute("name", name)
+    end
+
+    -- Set zoom levels based on waterway type
+    if waterway == "river" then
+        MinZoom(8)
+    elseif waterway == "canal" then
+        MinZoom(10)
+    elseif waterway == "stream" then
+        MinZoom(12)
+    else -- drain, ditch, etc.
+        MinZoom(13)
     end
 end
 
 -- Process land features (base layer for map rendering)
-function process_land(way, natural, landuse)
-    way:Layer("land", true) -- true = polygon
+function process_land(natural, landuse, leisure)
+    Layer("land", true) -- true = polygon
 
-    -- Determine kind
+    -- Determine kind - prioritize leisure (parks), then natural, then landuse
     local kind
-    if natural ~= "" then
+    if leisure ~= "" then
+        kind = leisure
+    elseif natural ~= "" then
         kind = natural
     elseif landuse ~= "" then
         kind = landuse
@@ -204,9 +240,36 @@ function process_land(way, natural, landuse)
         kind = "unknown"
     end
 
-    way:Attribute("kind", kind)
+    Attribute("kind", kind)
 
     -- Set minimum zoom
     -- Land features are generally visible at all zooms
-    way:MinZoom(0)
+    MinZoom(0)
+end
+
+-- Process street label (point feature for labeling roads on map)
+function process_street_label(highway, name, ref)
+    LayerAsCentroid("street_labels") -- Create point feature at centroid of linestring
+    Attribute("kind", highway)
+
+    if name ~= "" then
+        Attribute("name", name)
+    end
+
+    if ref ~= "" then
+        Attribute("ref", ref)
+    end
+
+    -- Set minimum zoom based on road type (same as streets)
+    if highway == "motorway" or highway == "trunk" then
+        MinZoom(10)
+    elseif highway == "primary" then
+        MinZoom(11)
+    elseif highway == "secondary" then
+        MinZoom(12)
+    elseif highway == "tertiary" then
+        MinZoom(13)
+    else
+        MinZoom(14)
+    end
 end

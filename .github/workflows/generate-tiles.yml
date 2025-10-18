@@ -43,7 +43,7 @@ jobs:
       - name: Generate tiles for ${{ matrix.state.name }}
         run: |
           echo "Generating tiles for ${{ matrix.state.name }}..."
-          docker run --rm \
+          sudo docker run --rm \
             -v $(pwd):/var/tm \
             -w /var/tm \
             --entrypoint tilemaker \
@@ -81,7 +81,7 @@ jobs:
       - name: Generate tiles for Germany (combined)
         run: |
           echo "Generating tiles for all of Germany..."
-          docker run --rm \
+          sudo docker run --rm \
             -v $(pwd):/var/tm \
             -w /var/tm \
             --entrypoint tilemaker \

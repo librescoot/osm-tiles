@@ -45,6 +45,7 @@ jobs:
           echo "Generating tiles for ${{ matrix.state.name }}..."
           sudo docker run --rm \
             -v $(pwd):/var/tm \
+            -v /tmp:/tmp \
             -w /var/tm \
             --entrypoint tilemaker \
             versatiles/versatiles-tilemaker \
@@ -83,6 +84,7 @@ jobs:
           echo "Generating tiles for all of Germany..."
           sudo docker run --rm \
             -v $(pwd):/var/tm \
+            -v /tmp:/tmp \
             -w /var/tm \
             --entrypoint tilemaker \
             versatiles/versatiles-tilemaker \

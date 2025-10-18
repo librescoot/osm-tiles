@@ -56,14 +56,14 @@ jobs:
         run: |
           echo "Generating tiles for ${{ matrix.state.name }}..."
           docker run --rm \
-            -v $(pwd)/tilemaker:/config:ro \
-            -v /tmp:/data \
+            -v $(pwd):/var/tm \
+            -w /var/tm \
+            --entrypoint tilemaker \
             tilemaker-custom \
-            tilemaker \
-              --input /data/${{ matrix.state.name }}.osm.pbf \
-              --output /data/tiles_${{ matrix.state.name }}.mbtiles \
-              --config /config/config.json \
-              --process /config/process.lua
+              --config tilemaker/config.json \
+              --process tilemaker/process.lua \
+              --input /tmp/${{ matrix.state.name }}.osm.pbf \
+              --output /tmp/tiles_${{ matrix.state.name }}.mbtiles
           echo "Tile generation completed for ${{ matrix.state.name }}"
           ls -lh /tmp/tiles_${{ matrix.state.name }}.mbtiles
 
@@ -95,14 +95,14 @@ jobs:
         run: |
           echo "Generating tiles for all of Germany..."
           docker run --rm \
-            -v $(pwd)/tilemaker:/config:ro \
-            -v /tmp:/data \
+            -v $(pwd):/var/tm \
+            -w /var/tm \
+            --entrypoint tilemaker \
             tilemaker-custom \
-            tilemaker \
-              --input /data/germany-latest.osm.pbf \
-              --output /data/tiles_germany.mbtiles \
-              --config /config/config.json \
-              --process /config/process.lua
+              --config tilemaker/config.json \
+              --process tilemaker/process.lua \
+              --input /tmp/germany-latest.osm.pbf \
+              --output /tmp/tiles_germany.mbtiles
           echo "Tile generation completed for Germany"
           ls -lh /tmp/tiles_germany.mbtiles
 

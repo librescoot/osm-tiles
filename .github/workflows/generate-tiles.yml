@@ -9,19 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Tilemaker Docker image
-        run: sudo docker build -t tilemaker-custom .
-
-      - name: Create output directory
-        run: mkdir -p /tmp/tilemaker-artifacts
-
   generate_state_tiles:
-    needs: build
     runs-on: self-hosted
     strategy:
       matrix:
@@ -55,11 +43,11 @@ jobs:
       - name: Generate tiles for ${{ matrix.state.name }}
         run: |
           echo "Generating tiles for ${{ matrix.state.name }}..."
-          sudo docker run --rm \
+          docker run --rm \
             -v $(pwd):/var/tm \
             -w /var/tm \
             --entrypoint tilemaker \
-            tilemaker-custom \
+            versatiles/versatiles-tilemaker \
               --config tilemaker/config.json \
               --process tilemaker/process.lua \
               --input /tmp/${{ matrix.state.name }}.osm.pbf \
@@ -79,7 +67,6 @@ jobs:
           path: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
   generate_combined_germany:
-    needs: build
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -94,11 +81,11 @@ jobs:
       - name: Generate tiles for Germany (combined)
         run: |
           echo "Generating tiles for all of Germany..."
-          sudo docker run --rm \
+          docker run --rm \
             -v $(pwd):/var/tm \
             -w /var/tm \
             --entrypoint tilemaker \
-            tilemaker-custom \
+            versatiles/versatiles-tilemaker \
               --config tilemaker/config.json \
               --process tilemaker/process.lua \
               --input /tmp/germany-latest.osm.pbf \

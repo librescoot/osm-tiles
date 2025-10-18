@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Tilemaker Docker image
-        run: docker build -t tilemaker-custom .
+        run: sudo docker build -t tilemaker-custom .
 
       - name: Create output directory
         run: mkdir -p /tmp/tilemaker-artifacts
@@ -55,7 +55,7 @@ jobs:
       - name: Generate tiles for ${{ matrix.state.name }}
         run: |
           echo "Generating tiles for ${{ matrix.state.name }}..."
-          docker run --rm \
+          sudo docker run --rm \
             -v $(pwd):/var/tm \
             -w /var/tm \
             --entrypoint tilemaker \
@@ -94,7 +94,7 @@ jobs:
       - name: Generate tiles for Germany (combined)
         run: |
           echo "Generating tiles for all of Germany..."
-          docker run --rm \
+          sudo docker run --rm \
             -v $(pwd):/var/tm \
             -w /var/tm \
             --entrypoint tilemaker \

@@ -1,0 +1,28 @@
+# OSM data files
+*.osm.pbf
+*.osm
+
+# Generated tile files
+*.mbtiles
+
+# Temporary files
+/tmp/
+*.tmp
+
+# Docker artifacts
+.docker/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+/build/
+/output/

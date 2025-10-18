@@ -1,0 +1,41 @@
+{
+  "layers": {
+    "streets": {
+      "minzoom": 10,
+      "maxzoom": 14,
+      "simplify_below": 14,
+      "simplify_level": 0.0001,
+      "simplify_ratio": 2.0
+    },
+    "water_polygons": {
+      "minzoom": 0,
+      "maxzoom": 14,
+      "simplify_below": 10,
+      "simplify_level": 0.001,
+      "simplify_ratio": 2.0
+    },
+    "land": {
+      "minzoom": 0,
+      "maxzoom": 14,
+      "simplify_below": 8,
+      "simplify_level": 0.001,
+      "simplify_ratio": 2.0
+    }
+  },
+  "settings": {
+    "minzoom": 0,
+    "maxzoom": 14,
+    "basezoom": 14,
+    "include_ids": false,
+    "compress": "gzip",
+    "metadata": {
+      "name": "LibreScoot Custom Shortbread Tiles",
+      "description": "Custom Shortbread-based vector tiles optimized for LibreScoot with speed limit data",
+      "version": "1.0",
+      "attribution": "© OpenStreetMap contributors",
+      "type": "baselayer",
+      "format": "pbf"
+    },
+    "bbox": [5.866315, 47.270111, 15.041962, 55.058347]
+  }
+}

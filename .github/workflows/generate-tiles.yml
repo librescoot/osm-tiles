@@ -1,0 +1,146 @@
+name: Generate Custom Shortbread Tiles - Germany
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '0 5 3 * *'  # Monthly on the 3rd at 5 AM UTC
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Tilemaker Docker image
+        run: docker build -t tilemaker-custom .
+
+      - name: Create output directory
+        run: mkdir -p /tmp/tilemaker-artifacts
+
+  generate_state_tiles:
+    needs: build
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        state:
+          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
+          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
+          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf" }
+          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
+          - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
+          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
+          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
+          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-latest.osm.pbf" }
+          - { name: "niedersachsen", url: "https://download.geofabrik.de/europe/germany/niedersachsen-latest.osm.pbf" }
+          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf" }
+          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-latest.osm.pbf" }
+          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-latest.osm.pbf" }
+          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf" }
+          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-latest.osm.pbf" }
+          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf" }
+          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download OSM PBF for ${{ matrix.state.name }}
+        run: |
+          echo "Downloading ${{ matrix.state.name }} PBF file..."
+          wget -q -O /tmp/${{ matrix.state.name }}.osm.pbf ${{ matrix.state.url }}
+          echo "Download completed for ${{ matrix.state.name }}"
+          ls -lh /tmp/${{ matrix.state.name }}.osm.pbf
+
+      - name: Generate tiles for ${{ matrix.state.name }}
+        run: |
+          echo "Generating tiles for ${{ matrix.state.name }}..."
+          docker run --rm \
+            -v $(pwd)/tilemaker:/config:ro \
+            -v /tmp:/data \
+            tilemaker-custom \
+            tilemaker \
+              --input /data/${{ matrix.state.name }}.osm.pbf \
+              --output /data/tiles_${{ matrix.state.name }}.mbtiles \
+              --config /config/config.json \
+              --process /config/process.lua
+          echo "Tile generation completed for ${{ matrix.state.name }}"
+          ls -lh /tmp/tiles_${{ matrix.state.name }}.mbtiles
+
+      - name: Move to artifacts directory
+        run: |
+          mkdir -p /tmp/tilemaker-artifacts
+          mv /tmp/tiles_${{ matrix.state.name }}.mbtiles /tmp/tilemaker-artifacts/
+
+      - name: Upload tiles for ${{ matrix.state.name }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiles_${{ matrix.state.name }}
+          path: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
+
+  generate_combined_germany:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Germany OSM PBF
+        run: |
+          echo "Downloading complete Germany PBF file..."
+          wget -q -O /tmp/germany-latest.osm.pbf https://download.geofabrik.de/europe/germany-latest.osm.pbf
+          echo "Download completed"
+          ls -lh /tmp/germany-latest.osm.pbf
+
+      - name: Generate tiles for Germany (combined)
+        run: |
+          echo "Generating tiles for all of Germany..."
+          docker run --rm \
+            -v $(pwd)/tilemaker:/config:ro \
+            -v /tmp:/data \
+            tilemaker-custom \
+            tilemaker \
+              --input /data/germany-latest.osm.pbf \
+              --output /data/tiles_germany.mbtiles \
+              --config /config/config.json \
+              --process /config/process.lua
+          echo "Tile generation completed for Germany"
+          ls -lh /tmp/tiles_germany.mbtiles
+
+      - name: Move to artifacts directory
+        run: |
+          mkdir -p /tmp/tilemaker-artifacts
+          mv /tmp/tiles_germany.mbtiles /tmp/tilemaker-artifacts/
+
+      - name: Upload combined Germany tiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiles_germany
+          path: /tmp/tilemaker-artifacts/tiles_germany.mbtiles
+
+  release:
+    needs: [generate_state_tiles, generate_combined_germany]
+    runs-on: self-hosted
+    steps:
+      - name: Download all tile artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List all artifacts
+        run: |
+          echo "Listing all downloaded tile artifacts:"
+          find artifacts -name "*.mbtiles" -type f -exec ls -lh {} \;
+
+      - name: Set release month variable
+        id: date
+        run: echo "month=$(date '+%B %Y')" >> $GITHUB_OUTPUT
+
+      - name: Create release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: false
+          automatic_release_tag: latest
+          title: "Custom Shortbread Tiles - ${{ steps.date.outputs.month }}"
+          files: |
+            artifacts/**/*.mbtiles

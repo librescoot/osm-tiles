@@ -249,7 +249,7 @@ Contributions are welcome! Areas for improvement:
 
 This project is licensed under CC BY-NC-SA 4.0.
 
-The generated tiles contain OpenStreetMap data © OpenStreetMap contributors, licensed under ODbL.
+The generated tiles contain OpenStreetMap data and are made available under the Open Database License: http://opendatacommons.org/licenses/odbl/1.0/. Any rights in individual contents of the database are licensed under the Database Contents License: http://opendatacommons.org/licenses/dbcl/1.0/
 
 ## Acknowledgments
 

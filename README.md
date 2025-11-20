@@ -1,6 +1,6 @@
 # Custom Shortbread Tiles for LibreScoot
 
-Automated generation of custom Shortbread-based vector tiles optimized for LibreScoot navigation with embedded speed limit data.
+Automated generation of custom Shortbread-based vector tiles optimized for LibreScoot navigation with embedded speed limit data and optional address data.
 
 ## Overview
 
@@ -14,15 +14,19 @@ This repository automatically generates custom MBTiles from OpenStreetMap data u
 
 - Custom Shortbread schema based on OSM data
 - Speed limit (maxspeed) data embedded in streets layer
+- **Two tile variants**: Standard (speed limits only) and Address-enabled (includes address points)
 - Minimal layer set for smaller file sizes and faster rendering
 - Monthly automated builds via GitHub Actions
 - Coverage: All 16 German states + combined Germany file
 
 ## Generated Files
 
-Each monthly release includes:
+Each monthly release includes two variants:
 
-### Individual State Files
+### Standard Tiles
+Optimized for navigation with street names, road types, and speed limits.
+
+**Individual State Files:**
 - `tiles_baden-wuerttemberg.mbtiles` (~60-120 MB)
 - `tiles_bayern.mbtiles` (~80-150 MB)
 - `tiles_berlin.mbtiles` (~20-40 MB)
@@ -40,8 +44,19 @@ Each monthly release includes:
 - `tiles_schleswig-holstein.mbtiles` (~50-90 MB)
 - `tiles_thueringen.mbtiles` (~40-80 MB)
 
-### Combined File
+**Combined File:**
 - `tiles_germany.mbtiles` (~800 MB - 1.2 GB)
+
+### Address-Enabled Tiles
+Includes all standard features plus detailed address data for geocoding and reverse geocoding.
+
+**Individual State Files:**
+- `tiles_addresses_berlin.mbtiles` (~17 MB, 91k addresses)
+- `tiles_addresses_brandenburg.mbtiles` (~51 MB, 248k addresses)
+- `tiles_addresses_[state].mbtiles` (varies by state)
+
+**Combined File:**
+- `tiles_addresses_germany.mbtiles` (estimated ~1.5-2 GB)
 
 ## Tile Schema
 
@@ -83,6 +98,19 @@ Base layer polygons for land features.
 **Attributes:**
 - `kind`: Land type (wood, grassland, forest, farmland, residential, etc.)
 
+#### 4. addresses (zoom 14 only) - Address-Enabled Tiles Only
+Point features for addresses, available only in `tiles_addresses_*.mbtiles` files.
+
+**Attributes:**
+- `housenumber`: House number (e.g., "42", "12a")
+- `street`: Street name
+- `city`: City name
+- `postcode`: Postal code
+- `suburb`: Suburb or district name (if available)
+- `name`: Place name (if available, e.g., for named buildings)
+
+**Note:** Address layer only appears at maximum zoom (14) to avoid clutter at lower zoom levels. Addresses are extracted from both standalone address nodes and building centroids with address tags.
+
 ## Usage
 
 ### Download Latest Release
@@ -121,6 +149,28 @@ if (maxspeed != null) {
 }
 ```
 
+### Accessing Address Data (Address-Enabled Tiles)
+
+Address data is available as point features in the `addresses` layer at zoom level 14:
+
+```dart
+// Accessing address points
+final housenumber = feature.properties['housenumber'];
+final street = feature.properties['street'];
+final city = feature.properties['city'];
+final postcode = feature.properties['postcode'];
+
+if (housenumber != null && street != null) {
+  print('Address: $street $housenumber, $postcode $city');
+}
+```
+
+**Use cases for address data:**
+- Reverse geocoding: Find address at a specific location
+- Geocoding: Search for addresses and navigate to them
+- Address validation: Verify if an address exists in the map data
+- Address autocomplete: Suggest addresses as users type
+
 ## Local Development
 
 ### Prerequisites
@@ -137,22 +187,52 @@ docker build -t tilemaker-custom .
 
 ### Generate Tiles Locally
 
-#### Single Region (e.g., Berlin)
+#### Standard Tiles (Speed Limits)
+
+**Single Region (e.g., Berlin):**
 
 ```bash
 # Download OSM data
 wget https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
 
-# Generate tiles
+# Generate standard tiles
 docker run --rm \
-  -v $(pwd)/tilemaker:/config:ro \
-  -v $(pwd):/data \
-  tilemaker-custom \
-  tilemaker \
-    --input /data/berlin-latest.osm.pbf \
-    --output /data/tiles_berlin.mbtiles \
-    --config /config/config.json \
-    --process /config/process.lua
+  -v $(pwd):/var/tm \
+  -v /tmp:/tmp \
+  -w /var/tm \
+  --entrypoint tilemaker \
+  versatiles/versatiles-tilemaker \
+    --config tilemaker/config.json \
+    --process tilemaker/process.lua \
+    --input /tmp/berlin-latest.osm.pbf \
+    --output tiles-output/tiles_berlin.mbtiles
+```
+
+#### Address-Enabled Tiles
+
+**Single Region (e.g., Berlin):**
+
+```bash
+# Download OSM data
+wget https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf -O /tmp/berlin.osm.pbf
+
+# Generate address tiles
+docker run --rm \
+  -v $(pwd):/var/tm \
+  -v /tmp:/tmp \
+  -w /var/tm \
+  --entrypoint tilemaker \
+  versatiles/versatiles-tilemaker \
+    --config tilemaker/config-addresses.json \
+    --process tilemaker/process-addresses.lua \
+    --input /tmp/berlin.osm.pbf \
+    --output tiles-output/tiles_addresses_berlin.mbtiles
+```
+
+**Or use the convenience script:**
+
+```bash
+./generate-tiles-addresses.sh
 ```
 
 #### All of Germany

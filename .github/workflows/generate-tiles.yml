@@ -16,8 +16,6 @@ jobs:
         state:
           - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
           - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
-          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf" }
-          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
           - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
           - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
           - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
@@ -63,6 +61,52 @@ jobs:
           name: tiles_${{ matrix.state.name }}
           path: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
+  generate_berlin_brandenburg_tiles:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install osmium-tool
+        run: sudo apt-get install -y osmium-tool
+
+      - name: Download Berlin + Brandenburg PBF files
+        run: |
+          echo "Downloading Berlin PBF file..."
+          wget -q -O /tmp/berlin.osm.pbf https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+          echo "Downloading Brandenburg PBF file..."
+          wget -q -O /tmp/brandenburg.osm.pbf https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
+          ls -lh /tmp/berlin.osm.pbf /tmp/brandenburg.osm.pbf
+
+      - name: Merge Berlin + Brandenburg PBF files
+        run: |
+          echo "Merging Berlin and Brandenburg PBF files..."
+          osmium merge /tmp/berlin.osm.pbf /tmp/brandenburg.osm.pbf -o /tmp/berlin_brandenburg.osm.pbf
+          echo "Merge completed"
+          ls -lh /tmp/berlin_brandenburg.osm.pbf
+
+      - name: Generate tiles for berlin_brandenburg
+        run: |
+          echo "Generating tiles for berlin_brandenburg..."
+          mkdir -p /tmp/tilemaker-artifacts
+          sudo docker run --rm \
+            -v $(pwd):/var/tm \
+            -v /tmp:/tmp \
+            -w /var/tm \
+            --entrypoint tilemaker \
+            versatiles/versatiles-tilemaker \
+              --config tilemaker/config.json \
+              --process tilemaker/process.lua \
+              --input /tmp/berlin_brandenburg.osm.pbf \
+              --output /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
+          echo "Tile generation completed for berlin_brandenburg"
+          ls -lh /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
+
+      - name: Upload tiles for berlin_brandenburg
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiles_berlin_brandenburg
+          path: /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
+
   generate_combined_germany:
     runs-on: self-hosted
     steps:
@@ -105,8 +149,6 @@ jobs:
         state:
           - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
           - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
-          - { name: "berlin", url: "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf" }
-          - { name: "brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
           - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
           - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
           - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
@@ -152,6 +194,52 @@ jobs:
           name: tiles_addresses_${{ matrix.state.name }}
           path: /tmp/tilemaker-artifacts/tiles_addresses_${{ matrix.state.name }}.mbtiles
 
+  generate_berlin_brandenburg_tiles_addresses:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install osmium-tool
+        run: sudo apt-get install -y osmium-tool
+
+      - name: Download Berlin + Brandenburg PBF files
+        run: |
+          echo "Downloading Berlin PBF file..."
+          wget -q -O /tmp/berlin.osm.pbf https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+          echo "Downloading Brandenburg PBF file..."
+          wget -q -O /tmp/brandenburg.osm.pbf https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
+          ls -lh /tmp/berlin.osm.pbf /tmp/brandenburg.osm.pbf
+
+      - name: Merge Berlin + Brandenburg PBF files
+        run: |
+          echo "Merging Berlin and Brandenburg PBF files..."
+          osmium merge /tmp/berlin.osm.pbf /tmp/brandenburg.osm.pbf -o /tmp/berlin_brandenburg.osm.pbf
+          echo "Merge completed"
+          ls -lh /tmp/berlin_brandenburg.osm.pbf
+
+      - name: Generate address tiles for berlin_brandenburg
+        run: |
+          echo "Generating address tiles for berlin_brandenburg..."
+          mkdir -p /tmp/tilemaker-artifacts
+          sudo docker run --rm \
+            -v $(pwd):/var/tm \
+            -v /tmp:/tmp \
+            -w /var/tm \
+            --entrypoint tilemaker \
+            versatiles/versatiles-tilemaker \
+              --config tilemaker/config-addresses.json \
+              --process tilemaker/process-addresses.lua \
+              --input /tmp/berlin_brandenburg.osm.pbf \
+              --output /tmp/tilemaker-artifacts/tiles_addresses_berlin_brandenburg.mbtiles
+          echo "Address tile generation completed for berlin_brandenburg"
+          ls -lh /tmp/tilemaker-artifacts/tiles_addresses_berlin_brandenburg.mbtiles
+
+      - name: Upload address tiles for berlin_brandenburg
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiles_addresses_berlin_brandenburg
+          path: /tmp/tilemaker-artifacts/tiles_addresses_berlin_brandenburg.mbtiles
+
   generate_combined_germany_addresses:
     runs-on: self-hosted
     steps:
@@ -188,7 +276,7 @@ jobs:
           path: /tmp/tilemaker-artifacts/tiles_addresses_germany.mbtiles
 
   release:
-    needs: [generate_state_tiles, generate_combined_germany, generate_state_tiles_addresses, generate_combined_germany_addresses]
+    needs: [generate_state_tiles, generate_berlin_brandenburg_tiles, generate_combined_germany, generate_state_tiles_addresses, generate_berlin_brandenburg_tiles_addresses, generate_combined_germany_addresses]
     runs-on: self-hosted
     steps:
       - name: Download all tile artifacts

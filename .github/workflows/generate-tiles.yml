@@ -107,43 +107,8 @@ jobs:
           name: tiles_berlin_brandenburg
           path: /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
 
-  generate_combined_germany:
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Germany OSM PBF
-        run: |
-          echo "Downloading complete Germany PBF file..."
-          wget -q -O /tmp/germany-latest.osm.pbf https://download.geofabrik.de/europe/germany-latest.osm.pbf
-          echo "Download completed"
-          ls -lh /tmp/germany-latest.osm.pbf
-
-      - name: Generate tiles for Germany (combined)
-        run: |
-          echo "Generating tiles for all of Germany..."
-          mkdir -p /tmp/tilemaker-artifacts
-          sudo docker run --rm \
-            -v $(pwd):/var/tm \
-            -v /tmp:/tmp \
-            -w /var/tm \
-            --entrypoint tilemaker \
-            versatiles/versatiles-tilemaker \
-              --config tilemaker/config.json \
-              --process tilemaker/process.lua \
-              --input /tmp/germany-latest.osm.pbf \
-              --output /tmp/tilemaker-artifacts/tiles_germany.mbtiles
-          echo "Tile generation completed for Germany"
-          ls -lh /tmp/tilemaker-artifacts/tiles_germany.mbtiles
-
-      - name: Upload combined Germany tiles
-        uses: actions/upload-artifact@v4
-        with:
-          name: tiles_germany
-          path: /tmp/tilemaker-artifacts/tiles_germany.mbtiles
-
   release:
-    needs: [generate_state_tiles, generate_berlin_brandenburg_tiles, generate_combined_germany]
+    needs: [generate_state_tiles, generate_berlin_brandenburg_tiles]
     runs-on: self-hosted
     steps:
       - name: Download all tile artifacts

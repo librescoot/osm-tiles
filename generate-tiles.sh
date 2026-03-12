@@ -73,27 +73,6 @@ for entry in "${STATES[@]}"; do
     generate_tiles "$state" "$pbf_file" "$output_file"
 done
 
-# Generate tiles for all of Germany
-echo ""
-echo "=== Generating tiles for all of Germany ==="
-germany_pbf="/tmp/germany-latest.osm.pbf"
-germany_output="$OUTPUT_DIR/tiles_germany.mbtiles"
-
-if [ -f "$germany_output" ]; then
-    echo "⊘ Skipping Germany (output already exists)"
-else
-    # Download Germany PBF if not already present
-    if [ ! -f "$germany_pbf" ]; then
-        echo "Downloading complete Germany..."
-        wget -q --show-progress -O "$germany_pbf" "https://download.geofabrik.de/europe/germany-latest.osm.pbf"
-    else
-        echo "⊘ Using existing PBF for Germany"
-    fi
-
-    # Generate tiles
-    generate_tiles "Germany (combined)" "$germany_pbf" "$germany_output"
-fi
-
 echo ""
 echo "=== All tiles generated successfully ==="
 echo "Output directory: $OUTPUT_DIR"

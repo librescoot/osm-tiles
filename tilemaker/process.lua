@@ -1,4 +1,5 @@
--- Custom Shortbread-based tile processing with maxspeed support
+-- Custom Shortbread-based tile processing
+-- Includes streets with speed limits, addresses, and 3D buildings
 -- Optimized for LibreScoot/scootui navigation use case
 
 -- Street types to include
@@ -46,16 +47,24 @@ function has_value(tab, val)
     return false
 end
 
--- Node function: not processing nodes for our use case
-function node_function(node)
-    -- We don't process individual nodes in this simplified schema
+-- Helper function to check if node has address tags
+function has_address_tags()
+    local housenumber = Find("addr:housenumber")
+    local street = Find("addr:street")
+    return housenumber ~= "" or street ~= ""
 end
 
--- Way function: process roads and water features
+-- Node function: process address nodes
+function node_function(node)
+    if has_address_tags() then
+        process_address_point()
+    end
+end
+
+-- Way function: process roads, water features, and buildings
 function way_function()
     local highway = Find("highway")
     local waterway = Find("waterway")
-    local natural = Find("natural")
 
     -- Process streets/roads
     if highway ~= "" and street_types[highway] then
@@ -74,9 +83,22 @@ function way_function()
         process_water_line(waterway)
         return
     end
+
+    -- Process buildings (most buildings are closed ways)
+    if IsClosed() then
+        local building = Find("building")
+        if building ~= "" and building ~= "no" then
+            process_building(building)
+            -- Also extract address from building if available
+            if has_address_tags() then
+                process_address_point()
+            end
+            return
+        end
+    end
 end
 
--- Area function: process water polygons and land
+-- Area function: process water polygons, land, and multipolygon buildings
 function area_function()
     local natural = Find("natural")
     local waterway = Find("waterway")
@@ -84,14 +106,23 @@ function area_function()
     local landuse = Find("landuse")
     local leisure = Find("leisure")
 
+    -- Process buildings (multipolygon relations)
+    local building = Find("building")
+    if building ~= "" and building ~= "no" then
+        process_building(building)
+        if has_address_tags() then
+            process_address_point()
+        end
+        return
+    end
+
     -- Process water polygons
     if natural == "water" or water ~= "" or waterway == "riverbank" then
         process_water_polygon(natural, water)
         return
     end
 
-    -- Process ALL land features - include any polygon with natural, landuse, or leisure tags
-    -- This is more future-proof and includes everything scootui might need
+    -- Process ALL land features
     if natural ~= "" or landuse ~= "" or leisure ~= "" then
         process_land(natural, landuse, leisure)
         return
@@ -166,11 +197,87 @@ function process_street(highway)
     end
 end
 
+-- Process address points (from nodes or building centroids)
+function process_address_point()
+    LayerAsCentroid("addresses")
+
+    local housenumber = Find("addr:housenumber")
+    if housenumber ~= "" then
+        Attribute("housenumber", housenumber)
+    end
+
+    local street = Find("addr:street")
+    if street ~= "" then
+        Attribute("street", street)
+    end
+
+    local city = Find("addr:city")
+    if city ~= "" then
+        Attribute("city", city)
+    end
+
+    local postcode = Find("addr:postcode")
+    if postcode ~= "" then
+        Attribute("postcode", postcode)
+    end
+
+    local suburb = Find("addr:suburb")
+    if suburb ~= "" then
+        Attribute("suburb", suburb)
+    end
+
+    local place_name = Find("name")
+    if place_name ~= "" then
+        Attribute("name", place_name)
+    end
+
+    MinZoom(14)
+end
+
+-- Process building features
+function process_building(building)
+    Layer("building", true) -- true = polygon
+
+    Attribute("kind", building)
+
+    -- Extract height: prefer building:height, then height, then estimate from levels
+    local height = Find("building:height")
+    if height == "" then height = Find("height") end
+    local levels = Find("building:levels")
+    local min_height = Find("building:min_height")
+    if min_height == "" then min_height = Find("min_height") end
+    local min_levels = Find("building:min_level")
+
+    -- Calculate render_height (meters)
+    local render_height = 10 -- default fallback
+    if height ~= "" then
+        local h = tonumber(height)
+        if h then render_height = h end
+    elseif levels ~= "" then
+        local l = tonumber(levels)
+        if l then render_height = l * 3 end
+    end
+
+    -- Calculate render_min_height (for floating parts like skyways)
+    local render_min_height = 0
+    if min_height ~= "" then
+        local mh = tonumber(min_height)
+        if mh then render_min_height = mh end
+    elseif min_levels ~= "" then
+        local ml = tonumber(min_levels)
+        if ml then render_min_height = ml * 3 end
+    end
+
+    AttributeNumeric("render_height", render_height)
+    AttributeNumeric("render_min_height", render_min_height)
+
+    MinZoom(13)
+end
+
 -- Process water polygon features
 function process_water_polygon(natural, water)
     Layer("water_polygons", true) -- true = polygon
 
-    -- Set kind based on water type
     if water ~= "" then
         Attribute("kind", water)
     elseif natural == "water" then
@@ -179,22 +286,19 @@ function process_water_polygon(natural, water)
         Attribute("kind", "water")
     end
 
-    -- Extract name if available
     local name = Find("name")
     if name ~= "" then
         Attribute("name", name)
     end
 
-    -- Set zoom levels based on size
-    -- Larger water bodies appear at lower zoom levels
     local area = Area()
-    if area > 1000000 then -- Very large (lakes, reservoirs)
+    if area > 1000000 then
         MinZoom(6)
-    elseif area > 100000 then -- Large
+    elseif area > 100000 then
         MinZoom(8)
-    elseif area > 10000 then -- Medium
+    elseif area > 10000 then
         MinZoom(10)
-    else -- Small
+    else
         MinZoom(12)
     end
 end
@@ -203,23 +307,20 @@ end
 function process_water_line(waterway)
     Layer("water_lines", false) -- false = linestring
 
-    -- Set kind based on waterway type
     Attribute("kind", waterway)
 
-    -- Extract name if available
     local name = Find("name")
     if name ~= "" then
         Attribute("name", name)
     end
 
-    -- Set zoom levels based on waterway type
     if waterway == "river" then
         MinZoom(8)
     elseif waterway == "canal" then
         MinZoom(10)
     elseif waterway == "stream" then
         MinZoom(12)
-    else -- drain, ditch, etc.
+    else
         MinZoom(13)
     end
 end
@@ -228,7 +329,6 @@ end
 function process_land(natural, landuse, leisure)
     Layer("land", true) -- true = polygon
 
-    -- Determine kind - prioritize leisure (parks), then natural, then landuse
     local kind
     if leisure ~= "" then
         kind = leisure
@@ -241,15 +341,12 @@ function process_land(natural, landuse, leisure)
     end
 
     Attribute("kind", kind)
-
-    -- Set minimum zoom
-    -- Land features are generally visible at all zooms
     MinZoom(0)
 end
 
 -- Process street label (point feature for labeling roads on map)
 function process_street_label(highway, name, ref)
-    LayerAsCentroid("street_labels") -- Create point feature at centroid of linestring
+    LayerAsCentroid("street_labels")
     Attribute("kind", highway)
 
     if name ~= "" then
@@ -260,7 +357,6 @@ function process_street_label(highway, name, ref)
         Attribute("ref", ref)
     end
 
-    -- Set minimum zoom based on road type (same as streets)
     if highway == "motorway" or highway == "trunk" then
         MinZoom(10)
     elseif highway == "primary" then

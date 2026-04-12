@@ -236,7 +236,7 @@ end
 
 -- Process building features
 function process_building(building)
-    Layer("building", true) -- true = polygon
+    Layer("buildings", true) -- true = polygon (matches Shortbread/Versatiles convention)
 
     Attribute("kind", building)
 

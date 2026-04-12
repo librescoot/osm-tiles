@@ -10,7 +10,7 @@ Every tile file includes all 7 layers. There's a single tile variant per region,
 |-------|------|----------|----------------|
 | **streets** | 10–14 | line | `kind`, `name`, `ref`, `maxspeed`, `oneway`, `bridge`, `tunnel`, `surface`, `lanes` |
 | **street_labels** | 10–14 | point | `kind`, `name`, `ref` |
-| **building** | 13–14 | polygon | `kind`, `render_height`, `render_min_height` |
+| **buildings** | 13–14 | polygon | `kind`, `render_height`, `render_min_height` |
 | **addresses** | 14 | point | `housenumber`, `street`, `city`, `postcode`, `suburb`, `name` |
 | **water_polygons** | 0–14 | polygon | `kind`, `name` |
 | **water_lines** | 8–14 | line | `kind`, `name` |

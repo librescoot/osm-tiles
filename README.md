@@ -1,340 +1,119 @@
-# Custom Shortbread Tiles for LibreScoot
+# LibreScoot OSM Tiles
 
-Automated generation of custom Shortbread-based vector tiles optimized for LibreScoot navigation with embedded speed limit data and optional address data.
+Vector tiles for LibreScoot's offline map display, generated from OpenStreetMap data using [Tilemaker](https://github.com/systemed/tilemaker). Includes street names, speed limits, 3D buildings, addresses, and water features — everything scootui needs to render the map and drive navigation.
 
-## Overview
+## Layers
 
-This repository automatically generates custom MBTiles from OpenStreetMap data using Tilemaker. Unlike downloading pre-built Shortbread tiles from Geofabrik, this approach gives us full control over:
+Every tile file includes all 7 layers. There's a single tile variant per region, not separate "standard" / "address" sets.
 
-- **Custom OSM tags**: Includes `maxspeed` (speed limits) in the streets layer
-- **Layer optimization**: Only includes layers needed for scootui (streets, water_polygons, land)
-- **Regional coverage**: Generates tiles for German states individually and combined
+| Layer | Zoom | Geometry | Key Attributes |
+|-------|------|----------|----------------|
+| **streets** | 10–14 | line | `kind`, `name`, `ref`, `maxspeed`, `oneway`, `bridge`, `tunnel`, `surface`, `lanes` |
+| **street_labels** | 10–14 | point | `kind`, `name`, `ref` |
+| **building** | 13–14 | polygon | `kind`, `render_height`, `render_min_height` |
+| **addresses** | 14 | point | `housenumber`, `street`, `city`, `postcode`, `suburb`, `name` |
+| **water_polygons** | 0–14 | polygon | `kind`, `name` |
+| **water_lines** | 8–14 | line | `kind`, `name` |
+| **land** | 0–14 | polygon | `kind` |
 
-## Features
+### Streets
 
-- Custom Shortbread schema based on OSM data
-- Speed limit (maxspeed) data embedded in streets layer
-- **Two tile variants**: Standard (speed limits only) and Address-enabled (includes address points)
-- Minimal layer set for smaller file sizes and faster rendering
-- Monthly automated builds via GitHub Actions
-- Coverage: All 16 German states + combined Germany file
+Road types: motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, service, pedestrian, track, path, footway, cycleway, steps, busway, taxiway.
+
+`maxspeed` values come directly from OSM — numeric ("50", "100") or symbolic ("DE:urban", "DE:motorway"). scootui's speed limit display handles both.
+
+### Buildings
+
+3D extrusion attributes (`render_height`, `render_min_height`) are derived from `building:height`, `height`, `building:levels`, or a 10 m default. scootui's map style uses these via `fill-extrusion` for the 3D building layer.
+
+### Addresses
+
+Extracted from both standalone `addr:*` nodes and building centroids that carry address tags. Available at zoom 14 only.
 
 ## Generated Files
 
-Each monthly release includes two variants:
+Monthly CI builds produce one `.mbtiles` file per region. Berlin and Brandenburg are combined into a single file because the Geofabrik extract covers Brandenburg (which contains Berlin).
 
-### Standard Tiles
-Optimized for navigation with street names, road types, and speed limits.
+| Region | Approx. Size |
+|--------|-------------|
+| `tiles_baden-wuerttemberg.mbtiles` | 302 MB |
+| `tiles_bayern.mbtiles` | 367 MB |
+| `tiles_berlin_brandenburg.mbtiles` | 134 MB |
+| `tiles_bremen.mbtiles` | 11 MB |
+| `tiles_hamburg.mbtiles` | 22 MB |
+| `tiles_hessen.mbtiles` | 163 MB |
+| `tiles_mecklenburg-vorpommern.mbtiles` | 57 MB |
+| `tiles_niedersachsen.mbtiles` | 253 MB |
+| `tiles_nordrhein-westfalen.mbtiles` | 475 MB |
+| `tiles_rheinland-pfalz.mbtiles` | 126 MB |
+| `tiles_saarland.mbtiles` | 29 MB |
+| `tiles_sachsen.mbtiles` | 113 MB |
+| `tiles_sachsen-anhalt.mbtiles` | 84 MB |
+| `tiles_schleswig-holstein.mbtiles` | 81 MB |
+| `tiles_thueringen.mbtiles` | 75 MB |
 
-**Individual State Files:**
-- `tiles_baden-wuerttemberg.mbtiles` (~60-120 MB)
-- `tiles_bayern.mbtiles` (~80-150 MB)
-- `tiles_berlin.mbtiles` (~20-40 MB)
-- `tiles_brandenburg.mbtiles` (~60-100 MB)
-- `tiles_bremen.mbtiles` (~10-20 MB)
-- `tiles_hamburg.mbtiles` (~15-30 MB)
-- `tiles_hessen.mbtiles` (~60-100 MB)
-- `tiles_mecklenburg-vorpommern.mbtiles` (~50-90 MB)
-- `tiles_niedersachsen.mbtiles` (~80-140 MB)
-- `tiles_nordrhein-westfalen.mbtiles` (~100-180 MB)
-- `tiles_rheinland-pfalz.mbtiles` (~50-90 MB)
-- `tiles_saarland.mbtiles` (~10-20 MB)
-- `tiles_sachsen.mbtiles` (~50-90 MB)
-- `tiles_sachsen-anhalt.mbtiles` (~50-90 MB)
-- `tiles_schleswig-holstein.mbtiles` (~50-90 MB)
-- `tiles_thueringen.mbtiles` (~40-80 MB)
+Sizes are from the most recent release and will vary slightly between builds as OSM data changes.
 
-**Combined File:**
-- `tiles_germany.mbtiles` (~800 MB - 1.2 GB)
+## Installation
 
-### Address-Enabled Tiles
-Includes all standard features plus detailed address data for geocoding and reverse geocoding.
-
-**Individual State Files:**
-- `tiles_addresses_berlin.mbtiles` (~17 MB, 91k addresses)
-- `tiles_addresses_brandenburg.mbtiles` (~51 MB, 248k addresses)
-- `tiles_addresses_[state].mbtiles` (varies by state)
-
-**Combined File:**
-- `tiles_addresses_germany.mbtiles` (estimated ~1.5-2 GB)
-
-## Tile Schema
-
-### Layers
-
-#### 1. streets (zoom 10-14)
-Vector linestrings representing roads and paths.
-
-**Attributes:**
-- `kind`: Road type (motorway, trunk, primary, secondary, tertiary, residential, etc.)
-- `name`: Street name (if available)
-- `ref`: Route reference (e.g., "A7", "B27")
-- `maxspeed`: Speed limit in km/h (e.g., "50", "100", "DE:urban")
-- `oneway`: Boolean, true if one-way street
-- `oneway_reverse`: Boolean, true if one-way in reverse direction
-- `bridge`: Boolean, true if bridge
-- `tunnel`: Boolean, true if tunnel
-- `surface`: Surface type (paved, unpaved, asphalt, etc.)
-- `lanes`: Number of lanes (if available)
-
-**Road types included:**
-- motorway, trunk, primary, secondary, tertiary
-- unclassified, residential, living_street
-- service, pedestrian, track, path
-- footway, cycleway, steps, busway, taxiway
-
-#### 2. water_polygons (zoom 0-14)
-Polygon features for water bodies.
-
-**Attributes:**
-- `kind`: Water type (water, lake, reservoir, pond, etc.)
-- `name`: Name of water body (if available)
-
-**Zoom levels:** Larger water bodies appear at lower zoom levels (6-8), smaller ones at higher zoom levels (10-14).
-
-#### 3. land (zoom 0-14)
-Base layer polygons for land features.
-
-**Attributes:**
-- `kind`: Land type (wood, grassland, forest, farmland, residential, etc.)
-
-#### 4. addresses (zoom 14 only) - Address-Enabled Tiles Only
-Point features for addresses, available only in `tiles_addresses_*.mbtiles` files.
-
-**Attributes:**
-- `housenumber`: House number (e.g., "42", "12a")
-- `street`: Street name
-- `city`: City name
-- `postcode`: Postal code
-- `suburb`: Suburb or district name (if available)
-- `name`: Place name (if available, e.g., for named buildings)
-
-**Note:** Address layer only appears at maximum zoom (14) to avoid clutter at lower zoom levels. Addresses are extracted from both standalone address nodes and building centroids with address tags.
-
-## Usage
-
-### Download Latest Release
-
-Visit the [Releases](../../releases) page and download the latest MBTiles files for your region.
-
-### Integration with scootui
-
-1. Download the appropriate regional or combined Germany MBTiles file
-2. Place in scootui's map data directory
-3. Configure scootui to use the MBTiles file
-4. Access speed limit data from the streets layer's `maxspeed` attribute
-
-Example using flutter_map with vector_map_tiles:
-
-```dart
-VectorTileLayer(
-  tileProviders: TileProviders({
-    'mbtiles': MbTilesVectorTileProvider.fromMbTilesArchive(
-      mbTilesArchive: 'path/to/tiles_germany.mbtiles',
-    ),
-  }),
-  // ... style configuration
-)
-```
-
-### Accessing Speed Limit Data
-
-Speed limits are stored in the `maxspeed` attribute of street features:
-
-```dart
-// In your map style or feature handler
-final maxspeed = feature.properties['maxspeed'];
-if (maxspeed != null) {
-  print('Speed limit: $maxspeed km/h');
-}
-```
-
-### Accessing Address Data (Address-Enabled Tiles)
-
-Address data is available as point features in the `addresses` layer at zoom level 14:
-
-```dart
-// Accessing address points
-final housenumber = feature.properties['housenumber'];
-final street = feature.properties['street'];
-final city = feature.properties['city'];
-final postcode = feature.properties['postcode'];
-
-if (housenumber != null && street != null) {
-  print('Address: $street $housenumber, $postcode $city');
-}
-```
-
-**Use cases for address data:**
-- Reverse geocoding: Find address at a specific location
-- Geocoding: Search for addresses and navigate to them
-- Address validation: Verify if an address exists in the map data
-- Address autocomplete: Suggest addresses as users type
+Download the `.mbtiles` file for your region from the [latest release](../../releases/tag/latest), rename it to `map.mbtiles`, and copy it to the DBC's `/data/maps/` directory — either via USB update mode or directly via the [data-server](https://github.com/librescoot/data-server) HTTP API.
 
 ## Local Development
 
-### Prerequisites
-
-- Docker
-- wget or curl
-- ~100 GB free disk space for Germany-wide generation
-
-### Build Tilemaker Image
+### Generate Tiles
 
 ```bash
-docker build -t tilemaker-custom .
-```
+# Download a regional OSM extract
+wget https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf -O /tmp/brandenburg.osm.pbf
 
-### Generate Tiles Locally
-
-#### Standard Tiles (Speed Limits)
-
-**Single Region (e.g., Berlin):**
-
-```bash
-# Download OSM data
-wget https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
-
-# Generate standard tiles
+# Generate tiles
 docker run --rm \
-  -v $(pwd):/var/tm \
-  -v /tmp:/tmp \
+  -v "$(pwd):/var/tm" \
+  -v "/tmp:/tmp" \
   -w /var/tm \
   --entrypoint tilemaker \
   versatiles/versatiles-tilemaker \
     --config tilemaker/config.json \
     --process tilemaker/process.lua \
-    --input /tmp/berlin-latest.osm.pbf \
-    --output tiles-output/tiles_berlin.mbtiles
+    --input /tmp/brandenburg.osm.pbf \
+    --output tiles-output/tiles_berlin_brandenburg.mbtiles
 ```
 
-#### Address-Enabled Tiles
-
-**Single Region (e.g., Berlin):**
+Or use the batch script to generate all states:
 
 ```bash
-# Download OSM data
-wget https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf -O /tmp/berlin.osm.pbf
-
-# Generate address tiles
-docker run --rm \
-  -v $(pwd):/var/tm \
-  -v /tmp:/tmp \
-  -w /var/tm \
-  --entrypoint tilemaker \
-  versatiles/versatiles-tilemaker \
-    --config tilemaker/config-addresses.json \
-    --process tilemaker/process-addresses.lua \
-    --input /tmp/berlin.osm.pbf \
-    --output tiles-output/tiles_addresses_berlin.mbtiles
+./generate-tiles.sh
 ```
 
-**Or use the convenience script:**
+### Customizing
 
-```bash
-./generate-tiles-addresses.sh
-```
+- **tilemaker/config.json** — layer definitions, zoom ranges, simplification
+- **tilemaker/process.lua** — OSM tag extraction, attribute mapping, zoom-level assignment
 
-#### All of Germany
+Test changes on a small region (Bremen at 11 MB) before running the full set.
 
-```bash
-# Download OSM data
-wget https://download.geofabrik.de/europe/germany-latest.osm.pbf
+### Performance
 
-# Generate tiles (requires significant RAM and time)
-docker run --rm \
-  -v $(pwd)/tilemaker:/config:ro \
-  -v $(pwd):/data \
-  tilemaker-custom \
-  tilemaker \
-    --input /data/germany-latest.osm.pbf \
-    --output /data/tiles_germany.mbtiles \
-    --config /config/config.json \
-    --process /config/process.lua
-```
-
-**Performance notes:**
-- Berlin: ~5-10 minutes, ~4 GB RAM
-- Germany: ~2-4 hours, ~32-64 GB RAM
-
-### Customizing the Schema
-
-#### Modify Layers
-
-Edit `tilemaker/config.json` to add/remove layers or adjust zoom levels.
-
-#### Modify Processing Logic
-
-Edit `tilemaker/process.lua` to change how OSM tags are processed or add new attributes.
-
-#### Test Changes Locally
-
-Use a small region like Berlin to quickly test changes before running the full workflow.
+| Region | Time | RAM |
+|--------|------|-----|
+| Bremen | ~1 min | ~2 GB |
+| Berlin/Brandenburg | ~5 min | ~4 GB |
+| Nordrhein-Westfalen | ~30 min | ~16 GB |
 
 ## Automated Builds
 
-Tiles are automatically generated monthly on the 3rd via GitHub Actions.
+GitHub Actions generates all state tiles monthly on the 3rd ([workflow](.github/workflows/generate-tiles.yml)). Each state runs in parallel. Results are published as a GitHub release tagged `latest`.
 
-### Manual Trigger
-
-You can manually trigger tile generation:
-
-1. Go to the "Actions" tab
-2. Select "Generate Custom Shortbread Tiles - Germany"
-3. Click "Run workflow"
-
-### Workflow Overview
-
-1. **Build**: Builds Tilemaker Docker image
-2. **Generate State Tiles**: Parallel generation for all 16 German states
-3. **Generate Combined Germany**: Single combined file for all of Germany
-4. **Release**: Creates a release with all generated MBTiles files
+Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany" → Run workflow.
 
 ## Technical Details
 
-### Tile Format
-
-- **Format**: MBTiles (SQLite database container)
-- **Encoding**: Protocol Buffers (vector tiles)
-- **Compression**: GZIP
-- **Zoom levels**: 0-14
+- **Format**: MBTiles (SQLite + gzip-compressed PBF vector tiles)
+- **Zoom**: 0–14
 - **Projection**: Web Mercator (EPSG:3857)
-
-### Data Source
-
-- **OpenStreetMap**: https://www.openstreetmap.org
-- **Geofabrik extracts**: https://download.geofabrik.de/europe/germany.html
-- **Updated**: Monthly (Geofabrik updates daily, we build monthly)
-
-### Comparison with Geofabrik Shortbread Tiles
-
-| Feature | Geofabrik Shortbread | Our Custom Tiles |
-|---------|---------------------|------------------|
-| **Layers** | 20+ layers | 3 layers (streets, water_polygons, land) |
-| **Speed limits** | Not included | Included in streets layer |
-| **File size** | Larger (~150-200 MB per state) | Smaller (~60-120 MB per state) |
-| **Customization** | Fixed schema | Fully customizable |
-| **Generation** | Pre-built by Geofabrik | Generated by us from OSM data |
-
-## Contributing
-
-Contributions are welcome! Areas for improvement:
-
-- Additional OSM tags (turn restrictions, access restrictions, etc.)
-- Style optimization for specific use cases
-- Performance improvements in processing
-- Additional regions beyond Germany
+- **Source**: [Geofabrik](https://download.geofabrik.de/europe/germany.html) regional extracts of [OpenStreetMap](https://www.openstreetmap.org)
+- **Generator**: [Tilemaker](https://github.com/systemed/tilemaker) via the [versatiles](https://versatiles.org) Docker image
 
 ## License
 
-This project is licensed under CC BY-NC-SA 4.0.
-
-The generated tiles contain OpenStreetMap data and are made available under the Open Database License: http://opendatacommons.org/licenses/odbl/1.0/. Any rights in individual contents of the database are licensed under the Database Contents License: http://opendatacommons.org/licenses/dbcl/1.0/
-
-## Acknowledgments
-
-- [OpenStreetMap](https://www.openstreetmap.org) contributors for the map data
-- [Geofabrik](https://www.geofabrik.de) for OSM extracts
-- [Tilemaker](https://github.com/systemed/tilemaker) for the tile generation tool
-- [Shortbread](https://shortbread-tiles.org) for the schema specification
-- LibreScoot community
+CC BY-NC-SA 4.0. Generated tiles contain OpenStreetMap data under the [Open Database License](http://opendatacommons.org/licenses/odbl/1.0/).

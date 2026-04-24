@@ -183,6 +183,12 @@ function process_street(highway)
         Attribute("lanes", lanes)
     end
 
+    -- Extract junction=roundabout so the UI can identify roundabout rings
+    local junction = Find("junction")
+    if junction == "roundabout" then
+        AttributeBoolean("junction_roundabout", true)
+    end
+
     -- Set minimum zoom based on road type
     if highway == "motorway" or highway == "trunk" then
         MinZoom(10)

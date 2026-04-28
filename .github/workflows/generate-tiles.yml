@@ -21,7 +21,7 @@ jobs:
           - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
           - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
           - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-latest.osm.pbf" }
-          - { name: "niedersachsen", url: "https://download.geofabrik.de/europe/germany/niedersachsen-latest.osm.pbf" }
+          - { name: "niedersachsen", label: "Niedersachsen (incl. Bremen)", url: "https://download.geofabrik.de/europe/germany/niedersachsen-latest.osm.pbf" }
           - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf" }
           - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-latest.osm.pbf" }
           - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-latest.osm.pbf" }

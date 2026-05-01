@@ -118,6 +118,8 @@ Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany" → Run
 
 ## License
 
+Generated tiles contain OpenStreetMap data under the [Open Database License](http://opendatacommons.org/licenses/odbl/1.0/).
+
 This project is dual-licensed. The source code is available under the
 [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License][cc-by-nc-sa].
 The maintainers reserve the right to grant separate licenses for commercial distribution; please contact the maintainers to discuss commercial licensing.

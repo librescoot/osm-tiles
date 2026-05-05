@@ -43,6 +43,9 @@ generate_tiles() {
             --input "$pbf_file" \
             --output "$output_file"
 
+    echo "Building geocoding index sidecar for $name..."
+    python3 "$(dirname "$0")/build_places.py" "$pbf_file" "$output_file"
+
     echo "✓ Completed: $output_file"
     ls -lh "$output_file"
 }

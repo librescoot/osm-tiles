@@ -12,6 +12,7 @@ jobs:
   generate_state_tiles:
     runs-on: self-hosted
     strategy:
+      fail-fast: false
       matrix:
         state:
           - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
@@ -54,6 +55,11 @@ jobs:
               --input /tmp/${{ matrix.state.name }}.osm.pbf \
               --output /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
           echo "Tile generation completed for ${{ matrix.state.name }}"
+          # Docker tilemaker runs as root and leaves the .mbtiles owned by
+          # root with read-only perms for everyone else. The next step opens
+          # it for writing via sqlite3 to add the geocoding-index tables, so
+          # hand ownership back to the runner user.
+          sudo chown $(id -u):$(id -g) /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
           ls -lh /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
       - name: Set up Python for geocoding index

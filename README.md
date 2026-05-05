@@ -32,6 +32,19 @@ Road types: motorway, trunk, primary, secondary, tertiary, unclassified, residen
 
 Extracted from both standalone `addr:*` nodes and building centroids that carry address tags. Available at zoom 14 only.
 
+## Geocoding Index Tables
+
+In addition to the MVT layers above, each `.mbtiles` ships a small SQLite-only geocoding index, built from administrative boundary polygons (kreisfreie Stadt L6 with `de:place=city`, Gemeinde L8, Stadtbezirk L9). scootui-qt reads these directly instead of iterating tiles to build its own address database.
+
+| Table | Purpose |
+|-------|---------|
+| **`places`** | One row per place polygon (admin_level, name, name:de/en/alt, population, address_count, street_count, centroid, bbox, polygon_wkb) |
+| **`place_aliases`** | All searchable name variants → place_id, including `name`, `name:de`, `name:en`, `alt_name`, `old_name`, and hyphenated-name segments (so "Schwabing" finds both Schwabing-West and Schwabing-Freimann) |
+| **`place_streets`** | One row per (place_id, street) with display name, centroid, and address count |
+| **`place_postcodes`** | Postcode-specific centroids per (place_id, street, postcode) |
+
+The polygon assignment uses point-in-polygon against admin boundaries — a München address ends up in both the L6 polygon (München) and an L9 polygon (its Stadtbezirk), so the user can search by either.
+
 ## Generated Files
 
 Monthly CI builds produce one `.mbtiles` file per region. Berlin and Brandenburg are combined into a single file because the Geofabrik extract covers Brandenburg (which contains Berlin).

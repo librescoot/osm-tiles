@@ -56,6 +56,21 @@ jobs:
           echo "Tile generation completed for ${{ matrix.state.name }}"
           ls -lh /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
+      - name: Set up Python for geocoding index
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install geocoding index dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build geocoding index for ${{ matrix.state.name }}
+        run: |
+          python3 build_places.py \
+            /tmp/${{ matrix.state.name }}.osm.pbf \
+            /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
+          ls -lh /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
+
       - name: Upload tiles for ${{ matrix.state.name }}
         uses: actions/upload-artifact@v4
         with:

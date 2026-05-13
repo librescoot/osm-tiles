@@ -77,11 +77,18 @@ def gen_aliases(tags: dict, name: str):
 
     Sources:
         name        canonical OSM name tag
-        name:de     German variant
-        name:en     English variant (catches Munich/Köln/etc.)
+        name:de     German variant (Köln, München)
+        name:en     English variant (Munich, Cologne)
+        name:nl     Dutch variant (covers NL and the Flemish-speaking parts of BE)
+        name:fr     French variant (covers FR, the Walloon-speaking parts of BE, and LU)
+        name:lb     Luxembourgish variant (LU)
         alt_name    semicolon-separated alternates
         old_name    historical names
         segment     hyphenated-name parts (Schwabing-West → "Schwabing")
+
+    Some places carry the local-language name as the canonical `name`
+    (Liège vs. Lüttich, Antwerpen vs. Antwerp), so listing several
+    languages here picks up both directions of the search.
     """
     seen = {}
 
@@ -95,6 +102,9 @@ def gen_aliases(tags: dict, name: str):
         add(name, "name")
     for src_key, label in (("name:de", "name:de"),
                             ("name:en", "name:en"),
+                            ("name:nl", "name:nl"),
+                            ("name:fr", "name:fr"),
+                            ("name:lb", "name:lb"),
                             ("alt_name", "alt_name"),
                             ("old_name", "old_name")):
         v = tags.get(src_key)

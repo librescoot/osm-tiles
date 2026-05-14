@@ -5,8 +5,9 @@ set -e
 OUTPUT_DIR="./tiles-output"
 mkdir -p "$OUTPUT_DIR"
 
-# List of German states with their Geofabrik URLs (format: "name|url")
-STATES=(
+# Regions to build (format: "name|url"). German states use per-state extracts;
+# Benelux countries use country-level extracts as a single tile each.
+REGIONS=(
     "baden-wuerttemberg|https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf"
     "bayern|https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
     "berlin|https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
@@ -23,6 +24,10 @@ STATES=(
     "sachsen-anhalt|https://download.geofabrik.de/europe/germany/sachsen-anhalt-latest.osm.pbf"
     "schleswig-holstein|https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf"
     "thueringen|https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf"
+    "netherlands|https://download.geofabrik.de/europe/netherlands-latest.osm.pbf"
+    "belgium|https://download.geofabrik.de/europe/belgium-latest.osm.pbf"
+    "luxembourg|https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf"
+    "ile-de-france|https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf"
 )
 
 # Function to generate tiles for a region
@@ -50,30 +55,26 @@ generate_tiles() {
     ls -lh "$output_file"
 }
 
-# Generate tiles for each state
-echo "=== Generating tiles for German states ==="
-for entry in "${STATES[@]}"; do
-    state="${entry%%|*}"
+echo "=== Generating tiles ==="
+for entry in "${REGIONS[@]}"; do
+    region="${entry%%|*}"
     url="${entry##*|}"
-    pbf_file="/tmp/${state}.osm.pbf"
-    output_file="$OUTPUT_DIR/tiles_${state}.mbtiles"
+    pbf_file="/tmp/${region}.osm.pbf"
+    output_file="$OUTPUT_DIR/tiles_${region}.mbtiles"
 
-    # Skip if output already exists
     if [ -f "$output_file" ]; then
-        echo "⊘ Skipping $state (output already exists)"
+        echo "⊘ Skipping $region (output already exists)"
         continue
     fi
 
-    # Download PBF if not already present
     if [ ! -f "$pbf_file" ]; then
-        echo "Downloading $state..."
+        echo "Downloading $region..."
         wget -q --show-progress -O "$pbf_file" "$url"
     else
-        echo "⊘ Using existing PBF for $state"
+        echo "⊘ Using existing PBF for $region"
     fi
 
-    # Generate tiles
-    generate_tiles "$state" "$pbf_file" "$output_file"
+    generate_tiles "$region" "$pbf_file" "$output_file"
 done
 
 echo ""

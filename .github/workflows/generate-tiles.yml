@@ -1,4 +1,4 @@
-name: Generate Custom Shortbread Tiles - Germany
+name: Generate Custom Shortbread Tiles - Germany + Benelux + France
 
 permissions:
   contents: write
@@ -30,6 +30,10 @@ jobs:
           - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-latest.osm.pbf" }
           - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf" }
           - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf" }
+          - { name: "netherlands", url: "https://download.geofabrik.de/europe/netherlands-latest.osm.pbf" }
+          - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
+          - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
+          - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
     steps:
       - uses: actions/checkout@v4
 
@@ -86,6 +90,10 @@ jobs:
   release:
     needs: [generate_state_tiles]
     runs-on: self-hosted
+    # Only publish to the `latest` release from main. Workflow runs on feature
+    # branches still produce artifacts (downloadable from the workflow run UI)
+    # but must not overwrite the production release.
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Download all tile artifacts
         uses: actions/download-artifact@v4

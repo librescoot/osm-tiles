@@ -1,0 +1,64 @@
+# Test fixtures for the normalize() routine.
+#
+# Both build_places.py (Python, server-side index builder) and scootui-qt's
+# AddressDatabaseService::normalize() (C++, on-device query) MUST produce
+# identical output for every case below — otherwise the on-device trie
+# lookup won't match the server-built place_aliases keys.
+#
+# Format: <input>\t<expected output>
+# Lines starting with # are ignored. Blank lines are ignored.
+#
+# When adding a country or a new diacritic, add cases here, then update
+# normalize() in both repos in lockstep.
+
+# German umlauts and eszett — digraph expansion
+Köln	koeln
+München	muenchen
+Düsseldorf	duesseldorf
+Würzburg	wuerzburg
+Straße	strasse
+Ärger	aerger
+Öl	oel
+
+# Street/square abbreviation expansion
+Goethestr	goethestrasse
+Goethestr 12	goethestrasse 12
+Marktpl	marktplatz
+Karl-Marx-Pl	karl-marx-platz
+
+# French / Walloon (Belgium) diacritics — base letter
+Liège	liege
+Châtillon	chatillon
+Aix-en-Provence	aix-en-provence
+Île-de-France	ile-de-france
+Côte-d'Or	cote-dor
+Ouï	oui
+
+# Luxembourgish
+Lëtzebuerg	letzebuerg
+Esch-sur-Alzette	esch-sur-alzette
+
+# Dutch with dieresis (rare but real, e.g. coördinaat-style names)
+Coevorden	coevorden
+'s-Gravenhage	s-gravenhage
+IJmuiden	ijmuiden
+
+# Mixed: French/Belgian places that also have German exonyms — both forms
+# normalize so device queries match no matter which is in name:* tag
+Anvers	anvers
+Antwerpen	antwerpen
+Aachen	aachen
+
+# Ligatures
+Œuvres	oeuvres
+Sainte-Foy-lès-Lyon	sainte-foy-les-lyon
+
+# Punctuation gets dropped (except space and hyphen)
+St. Pölten	st poelten
+'t Veld	t veld
+Le Mans	le mans
+
+# Minimal inputs
+A	a
+1	1
+123	123

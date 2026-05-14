@@ -1,6 +1,6 @@
 -- Custom Shortbread-based tile processing
 -- Includes streets with speed limits, addresses, and 3D buildings
--- Optimized for LibreScoot/scootui navigation use case
+-- Optimized for Librescoot/scootui navigation use case
 
 -- Street types to include
 local street_types = {

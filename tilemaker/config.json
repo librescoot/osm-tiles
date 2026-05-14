@@ -47,7 +47,7 @@
     "basezoom": 14,
     "include_ids": false,
     "compress": "gzip",
-    "name": "LibreScoot Custom Shortbread Tiles",
+    "name": "Librescoot Custom Shortbread Tiles",
     "version": "2.0",
     "description": "Custom vector tiles with streets, addresses, buildings, and speed limit data",
     "bbox": [5.866315, 47.270111, 15.041962, 55.058347],

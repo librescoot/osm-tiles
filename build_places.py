@@ -46,10 +46,24 @@ def normalize(name: str) -> str:
 
     Critical: this must produce identical output to the C++ implementation,
     otherwise the device-side trie lookup won't match the server-side index.
+    Test fixtures with expected outputs live in tests/normalize_cases.txt —
+    both this function and the C++ version are checked against them.
+
+    Rules:
+    - German umlauts and ß expand to digraphs (Köln → koeln, Straße → strasse).
+      Keeps the established convention; the on-device index already uses it.
+    - Other Latin diacritics strip to the base letter (Liège → liege,
+      Lëtzebuerg → letzebuerg, Châtillon → chatillon).
+    - Ligatures Œ/Æ expand to oe/ae.
+    - Letters and digits pass through lowercased; spaces and hyphens kept.
+      Everything else is dropped.
+    - Common German street/square abbreviations get expanded post-pass so
+      \"Goethestr\" matches \"Goethestraße\".
     """
     out = []
     for c in name:
         u = ord(c)
+        # German umlauts and eszett — digraph expansion (Köln → koeln).
         if u in (0x00C4, 0x00E4):
             out.append("ae")
         elif u in (0x00D6, 0x00F6):
@@ -58,6 +72,32 @@ def normalize(name: str) -> str:
             out.append("ue")
         elif u == 0x00DF:
             out.append("ss")
+        # Other Latin diacritics — strip to base letter.
+        elif u in (0x00C0, 0x00E0, 0x00C1, 0x00E1, 0x00C2, 0x00E2,
+                   0x00C3, 0x00E3, 0x00C5, 0x00E5):
+            out.append("a")  # À Á Â Ã Å
+        elif u in (0x00C7, 0x00E7):
+            out.append("c")  # Ç
+        elif u in (0x00C8, 0x00E8, 0x00C9, 0x00E9,
+                   0x00CA, 0x00EA, 0x00CB, 0x00EB):
+            out.append("e")  # È É Ê Ë
+        elif u in (0x00CC, 0x00EC, 0x00CD, 0x00ED,
+                   0x00CE, 0x00EE, 0x00CF, 0x00EF):
+            out.append("i")  # Ì Í Î Ï
+        elif u in (0x00D1, 0x00F1):
+            out.append("n")  # Ñ
+        elif u in (0x00D2, 0x00F2, 0x00D3, 0x00F3, 0x00D4, 0x00F4,
+                   0x00D5, 0x00F5, 0x00D8, 0x00F8):
+            out.append("o")  # Ò Ó Ô Õ Ø
+        elif u in (0x00D9, 0x00F9, 0x00DA, 0x00FA, 0x00DB, 0x00FB):
+            out.append("u")  # Ù Ú Û
+        elif u in (0x00DD, 0x00FD, 0x0178, 0x00FF):
+            out.append("y")  # Ý Ÿ
+        # Ligatures.
+        elif u in (0x0152, 0x0153):
+            out.append("oe")  # Œ
+        elif u in (0x00C6, 0x00E6):
+            out.append("ae")  # Æ
         elif c.isalnum():
             out.append(c.lower())
         elif c in (" ", "-"):

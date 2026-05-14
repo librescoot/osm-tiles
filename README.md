@@ -39,33 +39,37 @@ In addition to the MVT layers above, each `.mbtiles` ships a small SQLite-only g
 | Table | Purpose |
 |-------|---------|
 | **`places`** | One row per place polygon (admin_level, name, name:de/en/alt, population, address_count, street_count, centroid, bbox, polygon_wkb) |
-| **`place_aliases`** | All searchable name variants → place_id, including `name`, `name:de`, `name:en`, `alt_name`, `old_name`, and hyphenated-name segments (so "Schwabing" finds both Schwabing-West and Schwabing-Freimann) |
+| **`place_aliases`** | All searchable name variants → place_id, including `name`, `name:de`, `name:en`, `name:nl`, `name:fr`, `name:lb`, `alt_name`, `old_name`, and hyphenated-name segments (so "Schwabing" finds both Schwabing-West and Schwabing-Freimann; "Liège" also matches "Lüttich" and "Luik") |
 | **`place_streets`** | One row per (place_id, street) with display name, centroid, and address count |
 | **`place_postcodes`** | Postcode-specific centroids per (place_id, street, postcode) |
 
-The polygon assignment uses point-in-polygon against admin boundaries — a München address ends up in both the L6 polygon (München) and an L9 polygon (its Stadtbezirk), so the user can search by either.
+The polygon assignment uses point-in-polygon against admin boundaries — a München address ends up in both the L6 polygon (München) and an L9 polygon (its Stadtbezirk), so the user can search by either. Aliases run through `normalize()` (see `build_places.py` and the matching `AddressDatabaseService::normalize()` in scootui-qt) so French/Lux/Dutch diacritics fold to plain ASCII at index time.
 
 ## Generated Files
 
-Monthly CI builds produce one `.mbtiles` file per region. Berlin and Brandenburg are combined into a single file because the Geofabrik extract covers Brandenburg (which contains Berlin).
+Monthly CI builds produce one `.mbtiles` file per region. German states use per-state extracts; Benelux uses country-level extracts; France is added at region granularity (just Île-de-France for now). Berlin and Brandenburg are combined into a single file because the Geofabrik Brandenburg extract already covers Berlin.
 
 | Region | Approx. Size |
 |--------|-------------|
-| `tiles_baden-wuerttemberg.mbtiles` | 302 MB |
-| `tiles_bayern.mbtiles` | 367 MB |
-| `tiles_berlin_brandenburg.mbtiles` | 134 MB |
-| `tiles_bremen.mbtiles` | 11 MB |
-| `tiles_hamburg.mbtiles` | 22 MB |
-| `tiles_hessen.mbtiles` | 163 MB |
-| `tiles_mecklenburg-vorpommern.mbtiles` | 57 MB |
-| `tiles_niedersachsen.mbtiles` | 253 MB |
-| `tiles_nordrhein-westfalen.mbtiles` | 475 MB |
-| `tiles_rheinland-pfalz.mbtiles` | 126 MB |
-| `tiles_saarland.mbtiles` | 29 MB |
-| `tiles_sachsen.mbtiles` | 113 MB |
-| `tiles_sachsen-anhalt.mbtiles` | 84 MB |
-| `tiles_schleswig-holstein.mbtiles` | 81 MB |
-| `tiles_thueringen.mbtiles` | 75 MB |
+| `tiles_baden-wuerttemberg.mbtiles` | 274 MB |
+| `tiles_bayern.mbtiles` | 340 MB |
+| `tiles_belgium.mbtiles` | 351 MB |
+| `tiles_berlin_brandenburg.mbtiles` | 125 MB |
+| `tiles_bremen.mbtiles` | 9 MB |
+| `tiles_hamburg.mbtiles` | 19 MB |
+| `tiles_hessen.mbtiles` | 152 MB |
+| `tiles_ile-de-france.mbtiles` | 142 MB |
+| `tiles_luxembourg.mbtiles` | 16 MB |
+| `tiles_mecklenburg-vorpommern.mbtiles` | 54 MB |
+| `tiles_netherlands.mbtiles` | 541 MB |
+| `tiles_niedersachsen.mbtiles` | 236 MB |
+| `tiles_nordrhein-westfalen.mbtiles` | 422 MB |
+| `tiles_rheinland-pfalz.mbtiles` | 116 MB |
+| `tiles_saarland.mbtiles` | 26 MB |
+| `tiles_sachsen.mbtiles` | 103 MB |
+| `tiles_sachsen-anhalt.mbtiles` | 79 MB |
+| `tiles_schleswig-holstein.mbtiles` | 74 MB |
+| `tiles_thueringen.mbtiles` | 70 MB |
 
 Sizes are from the most recent release and will vary slightly between builds as OSM data changes.
 
@@ -105,7 +109,7 @@ Or use the batch script to generate all states:
 - **tilemaker/config.json** — layer definitions, zoom ranges, simplification
 - **tilemaker/process.lua** — OSM tag extraction, attribute mapping, zoom-level assignment
 
-Test changes on a small region (Bremen at 11 MB) before running the full set.
+Test changes on a small region (Bremen at 9 MB, Luxembourg at 16 MB) before running the full set.
 
 ### Performance
 
@@ -114,19 +118,20 @@ Test changes on a small region (Bremen at 11 MB) before running the full set.
 | Bremen | ~1 min | ~2 GB |
 | Berlin/Brandenburg | ~5 min | ~4 GB |
 | Nordrhein-Westfalen | ~30 min | ~16 GB |
+| Netherlands | ~25 min | ~14 GB |
 
 ## Automated Builds
 
-GitHub Actions generates all state tiles monthly on the 3rd ([workflow](.github/workflows/generate-tiles.yml)). Each state runs in parallel. Results are published as a GitHub release tagged `latest`.
+GitHub Actions generates tiles for all 19 regions monthly on the 3rd ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel. Results are published as a GitHub release tagged `latest`.
 
-Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany" → Run workflow.
+Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France" → Run workflow.
 
 ## Technical Details
 
 - **Format**: MBTiles (SQLite + gzip-compressed PBF vector tiles)
 - **Zoom**: 0–14
 - **Projection**: Web Mercator (EPSG:3857)
-- **Source**: [Geofabrik](https://download.geofabrik.de/europe/germany.html) regional extracts of [OpenStreetMap](https://www.openstreetmap.org)
+- **Source**: [Geofabrik](https://download.geofabrik.de/europe/) regional extracts of [OpenStreetMap](https://www.openstreetmap.org)
 - **Generator**: [Tilemaker](https://github.com/systemed/tilemaker) via the [versatiles](https://versatiles.org) Docker image
 
 ## License

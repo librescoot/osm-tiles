@@ -27,6 +27,7 @@ REGIONS=(
     "netherlands|https://download.geofabrik.de/europe/netherlands-latest.osm.pbf"
     "belgium|https://download.geofabrik.de/europe/belgium-latest.osm.pbf"
     "luxembourg|https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf"
+    "ile-de-france|https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf"
 )
 
 # Function to generate tiles for a region

@@ -1,4 +1,4 @@
-name: Generate Custom Shortbread Tiles - Germany + Benelux
+name: Generate Custom Shortbread Tiles - Germany + Benelux + France
 
 permissions:
   contents: write
@@ -33,6 +33,7 @@ jobs:
           - { name: "netherlands", url: "https://download.geofabrik.de/europe/netherlands-latest.osm.pbf" }
           - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
           - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
+          - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
     steps:
       - uses: actions/checkout@v4
 

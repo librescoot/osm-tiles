@@ -118,3 +118,19 @@ jobs:
           title: "Custom Shortbread Tiles - ${{ steps.date.outputs.month }}"
           files: |
             artifacts/**/*.mbtiles
+
+      - name: Generate app token for downloads rebuild
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: librescoot
+          repositories: downloads.librescoot.org
+
+      - name: Trigger downloads site rebuild
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repository: librescoot/downloads.librescoot.org
+          event-type: releases-changed

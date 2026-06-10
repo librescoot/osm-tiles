@@ -6,7 +6,9 @@ OUTPUT_DIR="./tiles-output"
 mkdir -p "$OUTPUT_DIR"
 
 # Regions to build (format: "name|url"). German states use per-state extracts;
-# Benelux countries use country-level extracts as a single tile each.
+# Benelux countries use country-level extracts as a single tile each. Italy
+# uses Geofabrik's macro-area extracts (nord-ovest covers Lombardy plus
+# Piedmont, Liguria and Aosta Valley — Geofabrik has no per-regione extracts).
 REGIONS=(
     "baden-wuerttemberg|https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf"
     "bayern|https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
@@ -28,6 +30,7 @@ REGIONS=(
     "belgium|https://download.geofabrik.de/europe/belgium-latest.osm.pbf"
     "luxembourg|https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf"
     "ile-de-france|https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf"
+    "italy-nord-ovest|https://download.geofabrik.de/europe/italy/nord-ovest-latest.osm.pbf"
 )
 
 # Function to generate tiles for a region

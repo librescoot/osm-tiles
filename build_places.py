@@ -126,6 +126,7 @@ def gen_aliases(tags: dict, name: str):
         name:nl     Dutch variant (covers NL and the Flemish-speaking parts of BE)
         name:fr     French variant (covers FR, the Walloon-speaking parts of BE, and LU)
         name:lb     Luxembourgish variant (LU)
+        name:it     Italian variant (covers IT, incl. bilingual Aosta Valley)
         alt_name    semicolon-separated alternates
         old_name    historical names
         segment     hyphenated-name parts (Schwabing-West → "Schwabing")
@@ -149,6 +150,7 @@ def gen_aliases(tags: dict, name: str):
                             ("name:nl", "name:nl"),
                             ("name:fr", "name:fr"),
                             ("name:lb", "name:lb"),
+                            ("name:it", "name:it"),
                             ("alt_name", "alt_name"),
                             ("old_name", "old_name")):
         v = tags.get(src_key)

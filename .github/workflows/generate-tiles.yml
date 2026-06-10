@@ -1,4 +1,4 @@
-name: Generate Custom Shortbread Tiles - Germany + Benelux + France
+name: Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy
 
 permissions:
   contents: write
@@ -34,6 +34,10 @@ jobs:
           - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
           - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
           - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
+          # Geofabrik has no per-regione Italian extracts; nord-ovest is the
+          # smallest extract covering Lombardy (also includes Piedmont,
+          # Liguria, Aosta Valley).
+          - { name: "italy-nord-ovest", label: "Nord-Ovest (incl. Lombardy)", url: "https://download.geofabrik.de/europe/italy/nord-ovest-latest.osm.pbf" }
     steps:
       - uses: actions/checkout@v4
 

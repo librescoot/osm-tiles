@@ -39,15 +39,15 @@ In addition to the MVT layers above, each `.mbtiles` ships a small SQLite-only g
 | Table | Purpose |
 |-------|---------|
 | **`places`** | One row per place polygon (admin_level, name, name:de/en/alt, population, address_count, street_count, centroid, bbox, polygon_wkb) |
-| **`place_aliases`** | All searchable name variants → place_id, including `name`, `name:de`, `name:en`, `name:nl`, `name:fr`, `name:lb`, `alt_name`, `old_name`, and hyphenated-name segments (so "Schwabing" finds both Schwabing-West and Schwabing-Freimann; "Liège" also matches "Lüttich" and "Luik") |
+| **`place_aliases`** | All searchable name variants → place_id, including `name`, `name:de`, `name:en`, `name:nl`, `name:fr`, `name:lb`, `name:it`, `alt_name`, `old_name`, and hyphenated-name segments (so "Schwabing" finds both Schwabing-West and Schwabing-Freimann; "Liège" also matches "Lüttich" and "Luik") |
 | **`place_streets`** | One row per (place_id, street) with display name, centroid, and address count |
 | **`place_postcodes`** | Postcode-specific centroids per (place_id, street, postcode) |
 
-The polygon assignment uses point-in-polygon against admin boundaries — a München address ends up in both the L6 polygon (München) and an L9 polygon (its Stadtbezirk), so the user can search by either. Aliases run through `normalize()` (see `build_places.py` and the matching `AddressDatabaseService::normalize()` in scootui-qt) so French/Lux/Dutch diacritics fold to plain ASCII at index time.
+The polygon assignment uses point-in-polygon against admin boundaries — a München address ends up in both the L6 polygon (München) and an L9 polygon (its Stadtbezirk), so the user can search by either. Aliases run through `normalize()` (see `build_places.py` and the matching `AddressDatabaseService::normalize()` in scootui-qt) so French/Lux/Dutch/Italian diacritics fold to plain ASCII at index time.
 
 ## Generated Files
 
-Monthly CI builds produce one `.mbtiles` file per region. German states use per-state extracts; Benelux uses country-level extracts; France is added at region granularity (just Île-de-France for now). Berlin and Brandenburg are combined into a single file because the Geofabrik Brandenburg extract already covers Berlin.
+Monthly CI builds produce one `.mbtiles` file per region. German states use per-state extracts; Benelux uses country-level extracts; France is added at region granularity (just Île-de-France for now); Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single file because the Geofabrik Brandenburg extract already covers Berlin.
 
 | Region | Approx. Size |
 |--------|-------------|
@@ -59,6 +59,7 @@ Monthly CI builds produce one `.mbtiles` file per region. German states use per-
 | `tiles_hamburg.mbtiles` | 19 MB |
 | `tiles_hessen.mbtiles` | 152 MB |
 | `tiles_ile-de-france.mbtiles` | 142 MB |
+| `tiles_italy-nord-ovest.mbtiles` | first build pending |
 | `tiles_luxembourg.mbtiles` | 16 MB |
 | `tiles_mecklenburg-vorpommern.mbtiles` | 54 MB |
 | `tiles_netherlands.mbtiles` | 541 MB |
@@ -122,9 +123,9 @@ Test changes on a small region (Bremen at 9 MB, Luxembourg at 16 MB) before runn
 
 ## Automated Builds
 
-GitHub Actions generates tiles for all 19 regions monthly on the 3rd ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel. Results are published as a GitHub release tagged `latest`.
+GitHub Actions generates tiles for all 20 regions monthly on the 3rd ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel. Results are published as a GitHub release tagged `latest`.
 
-Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France" → Run workflow.
+Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy" → Run workflow.
 
 ## Technical Details
 

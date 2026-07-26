@@ -91,8 +91,101 @@ jobs:
           name: tiles_${{ matrix.state.name }}
           path: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
-  release:
+  delta:
     needs: [generate_state_tiles]
+    # GitHub-hosted on purpose: this job only downloads files and runs
+    # xdelta3, keeping load off the self-hosted runner.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        state:
+          - "baden-wuerttemberg"
+          - "bayern"
+          - "berlin_brandenburg"
+          - "bremen"
+          - "hamburg"
+          - "hessen"
+          - "mecklenburg-vorpommern"
+          - "niedersachsen"
+          - "nordrhein-westfalen"
+          - "rheinland-pfalz"
+          - "saarland"
+          - "sachsen"
+          - "sachsen-anhalt"
+          - "schleswig-holstein"
+          - "thueringen"
+          - "netherlands"
+          - "belgium"
+          - "luxembourg"
+          - "ile-de-france"
+          - "italy-nord-ovest"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install delta dependencies
+        run: sudo apt-get install -y xdelta3 jq
+
+      - name: Download build artifact for ${{ matrix.state }}
+        uses: actions/download-artifact@v4
+        with:
+          name: tiles_${{ matrix.state }}
+
+      - name: Determine current and previous version
+        id: versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUR=$(date +%Y-%m)
+          # Version tags are YYYY-MM; string comparison sorts them correctly.
+          PREV=$(gh api repos/${{ github.repository }}/tags --jq '.[].name' \
+            | grep -E '^[0-9]{4}-[0-9]{2}$' \
+            | sort -r \
+            | awk -v cur="$CUR" '$0 < cur { print; exit }')
+          if [[ -z "$PREV" ]]; then
+            echo "::notice::No previous version tag found before $CUR, skipping delta for ${{ matrix.state }}"
+            echo "made=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Previous version: $PREV, current version: $CUR"
+          echo "made=true" >> "$GITHUB_OUTPUT"
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          echo "cur=$CUR" >> "$GITHUB_OUTPUT"
+
+      - name: Download base asset from previous release
+        id: base
+        if: steps.versions.outputs.made == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release download "${{ steps.versions.outputs.prev }}" \
+              --pattern "tiles_${{ matrix.state }}.mbtiles" --dir base/; then
+            echo "::notice::tiles_${{ matrix.state }}.mbtiles not found in release ${{ steps.versions.outputs.prev }} (new region?), skipping delta"
+            echo "made=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ls -lh base/
+          echo "made=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create delta for ${{ matrix.state }}
+        if: steps.versions.outputs.made == 'true' && steps.base.outputs.made == 'true'
+        run: |
+          tools/create-tile-delta.sh \
+            "base/tiles_${{ matrix.state }}.mbtiles" \
+            "tiles_${{ matrix.state }}.mbtiles" \
+            "${{ steps.versions.outputs.prev }}" \
+            "${{ steps.versions.outputs.cur }}" \
+            "tiles_${{ matrix.state }}_${{ steps.versions.outputs.prev }}_to_${{ steps.versions.outputs.cur }}.mtiledelta"
+
+      - name: Upload delta for ${{ matrix.state }}
+        if: steps.versions.outputs.made == 'true' && steps.base.outputs.made == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtiledelta_${{ matrix.state }}
+          path: tiles_${{ matrix.state }}_*.mtiledelta
+
+  release:
+    needs: [generate_state_tiles, delta]
     runs-on: self-hosted
     # Only publish to the `latest` release from main. Workflow runs on feature
     # branches still produce artifacts (downloadable from the workflow run UI)
@@ -107,7 +200,7 @@ jobs:
       - name: List all artifacts
         run: |
           echo "Listing all downloaded tile artifacts:"
-          find artifacts -name "*.mbtiles" -type f -exec ls -lh {} \;
+          find artifacts \( -name "*.mbtiles" -o -name "*.mtiledelta" \) -type f -exec ls -lh {} \;
 
       - name: Set release month variable
         id: date
@@ -122,6 +215,22 @@ jobs:
           title: "Custom Shortbread Tiles - ${{ steps.date.outputs.month }}"
           files: |
             artifacts/**/*.mbtiles
+            artifacts/**/*.mtiledelta
+
+      - name: Create versioned release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(date +%Y-%m)
+          mapfile -t FILES < <(find artifacts -type f \( -name '*.mbtiles' -o -name '*.mtiledelta' \) | sort)
+          echo "Uploading ${#FILES[@]} files to release $VER"
+          if ! gh release create "$VER" \
+              --title "Custom Shortbread Tiles - $(date '+%B %Y')" \
+              --notes "Versioned snapshot for delta updates. Deltas are relative to the previous version tag." \
+              "${FILES[@]}"; then
+            echo "Release $VER already exists (re-run), uploading with --clobber"
+            gh release upload "$VER" --clobber "${FILES[@]}"
+          fi
 
       - name: Generate app token for downloads rebuild
         id: app-token

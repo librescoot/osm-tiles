@@ -202,9 +202,11 @@ jobs:
           echo "Listing all downloaded tile artifacts:"
           find artifacts \( -name "*.mbtiles" -o -name "*.mtiledelta" \) -type f -exec ls -lh {} \;
 
-      - name: Set release month variable
+      - name: Set release date variables
         id: date
-        run: echo "month=$(date '+%B %Y')" >> $GITHUB_OUTPUT
+        run: |
+          echo "month=$(date '+%B %Y')" >> $GITHUB_OUTPUT
+          echo "ver=$(date +%Y-%m)" >> $GITHUB_OUTPUT
 
       - name: Create release
         uses: marvinpinto/action-automatic-releases@latest
@@ -218,19 +220,18 @@ jobs:
             artifacts/**/*.mtiledelta
 
       - name: Create versioned release
+        uses: softprops/action-gh-release@v3
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VER=$(date +%Y-%m)
-          mapfile -t FILES < <(find artifacts -type f \( -name '*.mbtiles' -o -name '*.mtiledelta' \) | sort)
-          echo "Uploading ${#FILES[@]} files to release $VER"
-          if ! gh release create "$VER" \
-              --title "Custom Shortbread Tiles - $(date '+%B %Y')" \
-              --notes "Versioned snapshot for delta updates. Deltas are relative to the previous version tag." \
-              "${FILES[@]}"; then
-            echo "Release $VER already exists (re-run), uploading with --clobber"
-            gh release upload "$VER" --clobber "${FILES[@]}"
-          fi
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.date.outputs.ver }}
+          name: "Custom Shortbread Tiles - ${{ steps.date.outputs.month }}"
+          body: "Versioned snapshot for delta updates. Deltas are relative to the previous version tag."
+          # The rolling `latest` tag must keep GitHub's Latest badge.
+          make_latest: false
+          files: |
+            artifacts/**/*.mbtiles
+            artifacts/**/*.mtiledelta
 
       - name: Generate app token for downloads rebuild
         id: app-token

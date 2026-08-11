@@ -38,7 +38,10 @@
     },
     "buildings": {
       "minzoom": 13,
-      "maxzoom": 14
+      "maxzoom": 14,
+      "simplify_below": 15,
+      "simplify_level": 0.0000215,
+      "simplify_ratio": 2.0
     }
   },
   "settings": {

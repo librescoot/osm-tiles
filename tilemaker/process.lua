@@ -9,6 +9,13 @@ local street_types = {
     primary = true,
     secondary = true,
     tertiary = true,
+    -- Links are the slip roads and connectors at junctions and roundabouts.
+    -- Without them a ring road and its radials render as disconnected pieces.
+    motorway_link = true,
+    trunk_link = true,
+    primary_link = true,
+    secondary_link = true,
+    tertiary_link = true,
     unclassified = true,
     residential = true,
     living_street = true,
@@ -180,13 +187,21 @@ function process_street(highway)
         AttributeBoolean("junction_roundabout", true)
     end
 
-    -- Set minimum zoom based on road type
+    -- Set minimum zoom based on road type. Links follow their parent class a
+    -- zoom later, since they are short and only matter once the junction is
+    -- actually legible.
     if highway == "motorway" or highway == "trunk" then
         MinZoom(10)
+    elseif highway == "motorway_link" or highway == "trunk_link" then
+        MinZoom(11)
     elseif highway == "primary" then
         MinZoom(11)
+    elseif highway == "primary_link" then
+        MinZoom(12)
     elseif highway == "secondary" then
         MinZoom(12)
+    elseif highway == "secondary_link" then
+        MinZoom(13)
     elseif highway == "tertiary" then
         MinZoom(13)
     else

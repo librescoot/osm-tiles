@@ -7,6 +7,10 @@
       "simplify_level": 0.0000215,
       "simplify_ratio": 2.0
     },
+    "street_labels": {
+      "minzoom": 10,
+      "maxzoom": 14
+    },
     "addresses": {
       "minzoom": 14,
       "maxzoom": 14

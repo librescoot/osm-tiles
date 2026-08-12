@@ -71,6 +71,12 @@ function way_function()
     -- Process streets/roads
     if highway ~= "" and street_types[highway] then
         process_street(highway)
+        -- Also create street label (only if street has a name or ref)
+        local name = Find("name")
+        local ref = Find("ref")
+        if name ~= "" or ref ~= "" then
+            process_street_label(highway, name, ref)
+        end
         return
     end
 
@@ -351,3 +357,28 @@ function process_land(natural, landuse, leisure)
     end
 end
 
+-- Process street label (point feature for labeling roads on map)
+function process_street_label(highway, name, ref)
+    LayerAsCentroid("street_labels")
+    Attribute("kind", highway)
+
+    if name ~= "" then
+        Attribute("name", name)
+    end
+
+    if ref ~= "" then
+        Attribute("ref", ref)
+    end
+
+    if highway == "motorway" or highway == "trunk" then
+        MinZoom(10)
+    elseif highway == "primary" then
+        MinZoom(11)
+    elseif highway == "secondary" then
+        MinZoom(12)
+    elseif highway == "tertiary" then
+        MinZoom(13)
+    else
+        MinZoom(14)
+    end
+end

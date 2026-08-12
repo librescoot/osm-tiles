@@ -113,41 +113,67 @@ jobs:
         id: date
         run: echo "month=$(date '+%B %Y')" >> $GITHUB_OUTPUT
 
-      - name: Create release
-        uses: marvinpinto/action-automatic-releases@latest
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: false
-          automatic_release_tag: latest
-          title: "Custom Shortbread Tiles - ${{ steps.date.outputs.month }}"
-          files: |
-            artifacts/**/*.mbtiles
-
-      # The release action returns before GitHub has finished settling every
-      # asset, and the tag is rewritten in place, so for a while the same
-      # download URL serves old, partial or missing content. The manifest that
-      # vehicles read is generated from this release, so publishing it early
-      # hands them a digest that does not match what they will download. Wait
-      # until every expected asset is uploaded and non-empty before saying so.
-      - name: Wait for release assets to settle
+      # Publishes to a fresh tag every run. The old scheme rewrote "latest" in
+      # place, so a download URL served different bytes depending on when it was
+      # fetched: a vehicle could take a digest from the manifest and receive
+      # content that no longer matched it. A tag that is never reused makes each
+      # asset URL immutable, so a download that starts against one build stays
+      # on that build. gh uploads the files as part of the create call, so the
+      # release is complete the moment it exists.
+      - name: Publish release
+        id: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          expected=$(find artifacts -name '*.mbtiles' -type f | wc -l)
-          echo "expecting $expected assets on the latest release"
-          for attempt in $(seq 1 60); do
-            assets=$(gh release view latest --repo "$GITHUB_REPOSITORY" \
-              --json assets --jq '[.assets[] | select(.size > 0)] | length')
-            echo "attempt $attempt: $assets/$expected uploaded"
-            if [ "$assets" -ge "$expected" ]; then
-              echo "all assets present"
-              exit 0
-            fi
-            sleep 30
-          done
-          echo "release assets did not settle within 30 minutes" >&2
-          exit 1
+          tag="tiles-$(date -u +%Y%m%dT%H%M%SZ)"
+          mapfile -t files < <(find artifacts -name '*.mbtiles' -type f | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no tile artifacts to publish" >&2
+            exit 1
+          fi
+          echo "publishing ${#files[@]} assets as $tag"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Custom Shortbread Tiles - ${{ steps.date.outputs.month }}" \
+            --notes "Generated $(date -u +%Y-%m-%dT%H:%M:%SZ) from ${GITHUB_SHA}." \
+            "${files[@]}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "expected=${#files[@]}" >> "$GITHUB_OUTPUT"
+
+      # gh create is synchronous, so this only guards against a partial upload
+      # it failed to report. The manifest must never describe a short release.
+      - name: Verify the release is complete
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          expected="${{ steps.publish.outputs.expected }}"
+          got=$(gh release view "${{ steps.publish.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '[.assets[] | select(.size > 0)] | length')
+          echo "$got/$expected assets present"
+          if [ "$got" -ne "$expected" ]; then
+            echo "release is short, refusing to publish the manifest" >&2
+            exit 1
+          fi
+
+      # Keeps a few generations so a download already in flight against an
+      # older build can still finish.
+      - name: Prune old tile releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName,createdAt \
+          | jq -r '[.[] | select(.tagName | startswith("tiles-"))]
+                   | sort_by(.createdAt) | reverse | .[3:] | .[].tagName' \
+          | while read -r old; do
+              [ -n "$old" ] || continue
+              echo "deleting $old"
+              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            done
 
       - name: Generate app token for downloads rebuild
         id: app-token

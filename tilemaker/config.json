@@ -3,8 +3,8 @@
     "streets": {
       "minzoom": 10,
       "maxzoom": 14,
-      "simplify_below": 14,
-      "simplify_level": 0.0001,
+      "simplify_below": 15,
+      "simplify_level": 0.0000215,
       "simplify_ratio": 2.0
     },
     "street_labels": {

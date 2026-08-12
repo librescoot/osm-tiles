@@ -123,6 +123,32 @@ jobs:
           files: |
             artifacts/**/*.mbtiles
 
+      # The release action returns before GitHub has finished settling every
+      # asset, and the tag is rewritten in place, so for a while the same
+      # download URL serves old, partial or missing content. The manifest that
+      # vehicles read is generated from this release, so publishing it early
+      # hands them a digest that does not match what they will download. Wait
+      # until every expected asset is uploaded and non-empty before saying so.
+      - name: Wait for release assets to settle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          expected=$(find artifacts -name '*.mbtiles' -type f | wc -l)
+          echo "expecting $expected assets on the latest release"
+          for attempt in $(seq 1 60); do
+            assets=$(gh release view latest --repo "$GITHUB_REPOSITORY" \
+              --json assets --jq '[.assets[] | select(.size > 0)] | length')
+            echo "attempt $attempt: $assets/$expected uploaded"
+            if [ "$assets" -ge "$expected" ]; then
+              echo "all assets present"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "release assets did not settle within 30 minutes" >&2
+          exit 1
+
       - name: Generate app token for downloads rebuild
         id: app-token
         uses: actions/create-github-app-token@v1

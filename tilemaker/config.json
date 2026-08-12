@@ -4,12 +4,17 @@
       "minzoom": 10,
       "maxzoom": 14,
       "simplify_below": 15,
-      "simplify_level": 0.0000215,
-      "simplify_ratio": 2.0
+      "simplify_level": 2.15e-05,
+      "simplify_ratio": 2.0,
+      "combine_lines_below": 15
     },
     "street_labels": {
       "minzoom": 10,
-      "maxzoom": 14
+      "maxzoom": 14,
+      "combine_lines_below": 15,
+      "simplify_below": 15,
+      "simplify_level": 2.15e-05,
+      "simplify_ratio": 2.0
     },
     "addresses": {
       "minzoom": 14,
@@ -19,7 +24,7 @@
       "minzoom": 0,
       "maxzoom": 14,
       "simplify_below": 15,
-      "simplify_level": 0.0000858,
+      "simplify_level": 8.58e-05,
       "simplify_ratio": 2.0
     },
     "water_lines": {
@@ -27,20 +32,21 @@
       "maxzoom": 14,
       "simplify_below": 12,
       "simplify_level": 0.0001,
-      "simplify_ratio": 2.0
+      "simplify_ratio": 2.0,
+      "combine_lines_below": 15
     },
     "land": {
       "minzoom": 0,
       "maxzoom": 14,
       "simplify_below": 15,
-      "simplify_level": 0.0000858,
+      "simplify_level": 8.58e-05,
       "simplify_ratio": 2.0
     },
     "buildings": {
       "minzoom": 13,
       "maxzoom": 14,
       "simplify_below": 15,
-      "simplify_level": 0.0000215,
+      "simplify_level": 2.15e-05,
       "simplify_ratio": 2.0
     }
   },
@@ -53,7 +59,12 @@
     "name": "Librescoot Custom Shortbread Tiles",
     "version": "2.0",
     "description": "Custom vector tiles with streets, addresses, buildings, and speed limit data",
-    "bbox": [5.866315, 47.270111, 15.041962, 55.058347],
+    "bbox": [
+      5.866315,
+      47.270111,
+      15.041962,
+      55.058347
+    ],
     "filemetadata": {
       "tilejson": "2.0.0",
       "scheme": "xyz",

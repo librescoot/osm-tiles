@@ -374,7 +374,10 @@ end
 
 -- Process street label (point feature for labeling roads on map)
 function process_street_label(highway, name, ref)
-    LayerAsCentroid("street_labels")
+    -- Linestring, not a centroid: Shortbread defines street_labels as line
+    -- geometry, and symbol-placement: line needs a line to walk. A centroid
+    -- gives one stamp per way with no way to follow the road or space repeats.
+    Layer("street_labels", false)
     Attribute("kind", highway)
 
     if name ~= "" then

@@ -61,7 +61,9 @@ function node_function(node)
     end
 end
 
--- Way function: process roads, water features, and buildings
+-- Way function: process roads, water features, buildings and land.
+-- tilemaker assembles multipolygon relations and passes them here too, so this
+-- sees both closed ways and relation-built areas. There is no area_function.
 function way_function()
     local highway = Find("highway")
     local waterway = Find("waterway")
@@ -78,51 +80,40 @@ function way_function()
         return
     end
 
-    -- Process waterways as lines (not polygons)
-    if waterway ~= "" and waterway ~= "riverbank" then
+    local area_tag = Find("area")
+    local is_area = area_tag == "yes"
+        or Find("type") == "multipolygon"
+        or (Area() > 0 and area_tag ~= "no")
+
+    -- Process waterways as lines (riverbanks and other areas fall through)
+    if waterway ~= "" and waterway ~= "riverbank" and not is_area then
         process_water_line(waterway)
         return
     end
 
-    -- Process buildings (most buildings are closed ways)
-    if IsClosed() then
-        local building = Find("building")
-        if building ~= "" and building ~= "no" then
-            process_building(building)
-            -- Also extract address from building if available
-            if has_address_tags() then
-                process_address_point()
-            end
-            return
-        end
+    if not is_area then
+        return
     end
-end
 
--- Area function: process water polygons, land, and multipolygon buildings
-function area_function()
-    local natural = Find("natural")
-    local waterway = Find("waterway")
-    local water = Find("water")
-    local landuse = Find("landuse")
-    local leisure = Find("leisure")
-
-    -- Process buildings (multipolygon relations)
     local building = Find("building")
     if building ~= "" and building ~= "no" then
         process_building(building)
+        -- Also extract address from building if available
         if has_address_tags() then
             process_address_point()
         end
         return
     end
 
-    -- Process water polygons
+    local natural = Find("natural")
+    local water = Find("water")
     if natural == "water" or water ~= "" or waterway == "riverbank" then
         process_water_polygon(natural, water)
         return
     end
 
-    -- Process ALL land features
+    local landuse = Find("landuse")
+    local leisure = Find("leisure")
     if natural ~= "" or landuse ~= "" or leisure ~= "" then
         process_land(natural, landuse, leisure)
         return
@@ -347,7 +338,23 @@ function process_land(natural, landuse, leisure)
     end
 
     Attribute("kind", kind)
-    MinZoom(0)
+
+    local name = Find("name")
+    if name ~= "" then
+        Attribute("name", name)
+    end
+
+    -- Same area ladder as water polygons, so a back garden does not reach z0
+    local area = Area()
+    if area > 1000000 then
+        MinZoom(6)
+    elseif area > 100000 then
+        MinZoom(8)
+    elseif area > 10000 then
+        MinZoom(10)
+    else
+        MinZoom(12)
+    end
 end
 
 -- Process street label (point feature for labeling roads on map)

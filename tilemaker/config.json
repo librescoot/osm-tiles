@@ -18,8 +18,8 @@
     "water_polygons": {
       "minzoom": 0,
       "maxzoom": 14,
-      "simplify_below": 10,
-      "simplify_level": 0.001,
+      "simplify_below": 15,
+      "simplify_level": 0.0000858,
       "simplify_ratio": 2.0
     },
     "water_lines": {
@@ -32,8 +32,8 @@
     "land": {
       "minzoom": 0,
       "maxzoom": 14,
-      "simplify_below": 8,
-      "simplify_level": 0.001,
+      "simplify_below": 15,
+      "simplify_level": 0.0000858,
       "simplify_ratio": 2.0
     },
     "buildings": {

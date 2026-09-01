@@ -6,12 +6,13 @@ Reads the OSM PBF for the same region as the mbtiles, extracts administrative
 boundary polygons (kreisfreie Stadt L6 with de:place=city, Gemeinde L8,
 Stadtbezirk L9), runs PIP for every address point in the addresses MVT layer,
 aggregates centroids per (place, street) and (place, street, postcode), and
-writes four tables alongside the existing tiles + metadata:
+writes five tables alongside the existing tiles + metadata:
 
-    places           — all admin polygons with stats (one row per place)
-    place_aliases    — searchable name variants → place_id (lookup index)
-    place_streets    — pre-aggregated streets per place + centroid
-    place_postcodes  — pre-aggregated postcode-specific centroids per street
+    places             — all admin polygons with stats (one row per place)
+    place_aliases      — searchable name variants → place_id (lookup index)
+    place_streets      — pre-aggregated streets per place + centroid
+    place_postcodes    — pre-aggregated postcode-specific centroids per street
+    place_street_tiles — exact address tiles per place/street/postcode
 
 The device-side AddressDatabaseService just reads these tables; no tile
 iteration, no PIP, no on-device alias generation.
@@ -307,12 +308,22 @@ CREATE TABLE place_postcodes (
     centroid_lng REAL NOT NULL,
     PRIMARY KEY (place_id, street_norm, postcode)
 );
+
+CREATE TABLE place_street_tiles (
+    place_id INTEGER NOT NULL,
+    street_norm TEXT NOT NULL,
+    postcode TEXT NOT NULL,
+    tile_column INTEGER NOT NULL,
+    tile_row INTEGER NOT NULL,
+    PRIMARY KEY (place_id, street_norm, postcode, tile_column, tile_row)
+) WITHOUT ROWID;
 """
 
 
 def reset_schema(db):
     cur = db.cursor()
-    for tbl in ("place_postcodes", "place_streets", "place_aliases", "places"):
+    for tbl in ("place_street_tiles", "place_postcodes", "place_streets",
+                "place_aliases", "places"):
         cur.execute(f"DROP TABLE IF EXISTS {tbl}")
     cur.executescript(SCHEMA_SQL)
 
@@ -325,6 +336,10 @@ def index_addresses(db, places, place_geoms, tree):
     street_runs = {}
     # (place_id, street_norm, postcode) -> [count, sum_lat, sum_lng]
     pc_runs = {}
+    # Exact MVT coverage for fast device-side house-number lookup. Empty
+    # postcode is retained so postcode-less addresses remain discoverable.
+    # (place_id, street_norm, postcode) -> {(tile_column, tile_row), ...}
+    street_tiles = defaultdict(set)
 
     addr_total = 0
     unassigned = 0
@@ -384,6 +399,8 @@ def index_addresses(db, places, place_geoms, tree):
                 sr[1] += lat
                 sr[2] += lon
 
+                street_tiles[(pid, street_norm, postcode)].add((x, tms_y))
+
                 if postcode:
                     pk = (pid, street_norm, postcode)
                     pr = pc_runs.get(pk)
@@ -403,6 +420,7 @@ def index_addresses(db, places, place_geoms, tree):
         "place_streets_seen": place_streets_seen,
         "street_runs": street_runs,
         "pc_runs": pc_runs,
+        "street_tiles": street_tiles,
     }
 
 
@@ -455,7 +473,16 @@ def write_tables(db, places, idx):
         pc_rows,
     )
 
-    return len(place_rows), len(alias_rows), len(street_rows), len(pc_rows)
+    tile_count = sum(len(tiles) for tiles in idx["street_tiles"].values())
+    cur.executemany(
+        "INSERT INTO place_street_tiles VALUES (?,?,?,?,?)",
+        ((pid, snorm, pc, x, y)
+         for (pid, snorm, pc), tiles in idx["street_tiles"].items()
+         for x, y in tiles),
+    )
+
+    return (len(place_rows), len(alias_rows), len(street_rows), len(pc_rows),
+            tile_count)
 
 
 def main():
@@ -497,9 +524,10 @@ def main():
     print(f"[3/4] Writing tables", flush=True)
     t2 = time.time()
     reset_schema(db)
-    np, na, ns, npc = write_tables(db, h.places, idx)
+    np, na, ns, npc, ntiles = write_tables(db, h.places, idx)
     db.commit()
-    print(f"      places={np} aliases={na} streets={ns} postcodes={npc} — "
+    print(f"      places={np} aliases={na} streets={ns} postcodes={npc} "
+          f"street_tiles={ntiles} — "
           f"{time.time()-t2:.1f}s", flush=True)
 
     sz_poly = db.execute("SELECT SUM(LENGTH(polygon_wkb)) FROM places").fetchone()[0] or 0

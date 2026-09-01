@@ -42,6 +42,7 @@ In addition to the MVT layers above, each `.mbtiles` ships a small SQLite-only g
 | **`place_aliases`** | All searchable name variants → place_id, including `name`, `name:de`, `name:en`, `name:nl`, `name:fr`, `name:lb`, `name:it`, `alt_name`, `old_name`, and hyphenated-name segments (so "Schwabing" finds both Schwabing-West and Schwabing-Freimann; "Liège" also matches "Lüttich" and "Luik") |
 | **`place_streets`** | One row per (place_id, street) with display name, centroid, and address count |
 | **`place_postcodes`** | Postcode-specific centroids per (place_id, street, postcode) |
+| **`place_street_tiles`** | Exact zoom-14 tile coverage per (place_id, street, postcode), allowing house-number lookup to decode only relevant tiles instead of a fixed 7×7 window |
 
 The polygon assignment uses point-in-polygon against admin boundaries — a München address ends up in both the L6 polygon (München) and an L9 polygon (its Stadtbezirk), so the user can search by either. Aliases run through `normalize()` (see `build_places.py` and the matching `AddressDatabaseService::normalize()` in scootui-qt) so French/Lux/Dutch/Italian diacritics fold to plain ASCII at index time.
 

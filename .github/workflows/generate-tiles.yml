@@ -7,9 +7,19 @@ on:
   schedule:
     - cron: '0 0 1 * *'  # Monthly on the 1st at midnight UTC
   workflow_dispatch:
+    inputs:
+      region:
+        description: "Region to build (single-region runs upload an artifact but do not publish a release)"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - berlin_brandenburg
 
 jobs:
   generate_state_tiles:
+    if: github.event_name != 'workflow_dispatch' || inputs.region == 'all'
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -90,6 +100,68 @@ jobs:
         with:
           name: tiles_${{ matrix.state.name }}
           path: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
+
+  # Fast validation/deployment path for Berlin without consuming runners for
+  # the full regional matrix or publishing a partial production release.
+  generate_berlin_brandenburg:
+    if: github.event_name == 'workflow_dispatch' && inputs.region == 'berlin_brandenburg'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Berlin/Brandenburg OSM PBF
+        run: |
+          wget -q -O /tmp/berlin_brandenburg.osm.pbf \
+            https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
+          ls -lh /tmp/berlin_brandenburg.osm.pbf
+
+      - name: Generate Berlin/Brandenburg tiles
+        run: |
+          mkdir -p /tmp/tilemaker-artifacts
+          sudo docker run --rm \
+            -v $(pwd):/var/tm \
+            -v /tmp:/tmp \
+            -w /var/tm \
+            --entrypoint tilemaker \
+            versatiles/versatiles-tilemaker \
+              --config tilemaker/config.json \
+              --process tilemaker/process.lua \
+              --input /tmp/berlin_brandenburg.osm.pbf \
+              --output /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
+          sudo chown $(id -u):$(id -g) \
+            /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
+          ls -lh /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
+
+      - name: Set up Python for geocoding index
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install geocoding index dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build and validate geocoding index
+        run: |
+          python3 build_places.py \
+            /tmp/berlin_brandenburg.osm.pbf \
+            /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
+          python3 - <<'PY'
+          import sqlite3
+          path = "/tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles"
+          db = sqlite3.connect(path)
+          count = db.execute("SELECT COUNT(*) FROM place_street_tiles").fetchone()[0]
+          if count <= 0:
+              raise SystemExit("place_street_tiles is empty")
+          print(f"validated {count} indexed street/tile rows")
+          db.close()
+          PY
+          ls -lh /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
+
+      - name: Upload Berlin/Brandenburg tiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiles_berlin_brandenburg
+          path: /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
 
   release:
     needs: [generate_state_tiles]

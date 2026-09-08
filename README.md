@@ -10,7 +10,7 @@ Every tile file includes all 7 layers. There's a single tile variant per region,
 
 | Layer | Zoom | Geometry | Key Attributes |
 |-------|------|----------|----------------|
-| **streets** | 10–14 | line | `kind`, `name`, `ref`, `maxspeed`, `oneway`, `bridge`, `tunnel`, `surface`, `lanes` |
+| **streets** | 10–14 | line | `kind`, `name`, `ref`, `route_networks`, `maxspeed`, `oneway`, `bridge`, `tunnel`, `surface`, `lanes` |
 | **street_labels** | 10–14 | point | `kind`, `name`, `ref` |
 | **buildings** | 13–14 | polygon | `kind`, `render_height`, `render_min_height` |
 | **addresses** | 14 | point | `housenumber`, `street`, `city`, `postcode`, `suburb`, `name` |
@@ -21,6 +21,8 @@ Every tile file includes all 7 layers. There's a single tile variant per region,
 ### Streets
 
 Road types: motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, service, pedestrian, track, path, footway, cycleway, steps, busway, taxiway.
+
+`route_networks` is a semicolon-separated list of the way's `route=road` relation networks (for example, `DE:national;e-road`).
 
 `maxspeed` values come directly from OSM — numeric ("50", "100") or symbolic ("DE:urban", "DE:motorway"). scootui's speed limit display handles both.
 

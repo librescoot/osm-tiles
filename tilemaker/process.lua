@@ -61,6 +61,13 @@ function has_address_tags()
     return housenumber ~= "" or street ~= ""
 end
 
+function relation_scan_function()
+    if Find("type") == "route" and Find("route") == "road"
+        and Find("network") ~= "" then
+        Accept()
+    end
+end
+
 -- Node function: process address nodes
 function node_function(node)
     if has_address_tags() then
@@ -131,6 +138,22 @@ end
 function process_street(highway)
     Layer("streets", false) -- false = linestring, not polygon
     Attribute("kind", highway)
+
+    local networks = {}
+    local seen_networks = {}
+    while true do
+        local relation_id = NextRelation()
+        if not relation_id then break end
+        local network = FindInRelation("network")
+        if network ~= "" and not seen_networks[network] then
+            seen_networks[network] = true
+            table.insert(networks, network)
+        end
+    end
+    if #networks > 0 then
+        table.sort(networks)
+        Attribute("route_networks", table.concat(networks, ";"))
+    end
 
     -- Extract name
     local name = Find("name")

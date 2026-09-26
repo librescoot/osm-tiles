@@ -50,18 +50,21 @@ The polygon assignment uses point-in-polygon against admin boundaries — a Mün
 
 ## Generated Files
 
-Monthly CI builds produce one `.mbtiles` file per region. German states use per-state extracts; Benelux uses country-level extracts; France is added at region granularity (just Île-de-France for now); Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single file because the Geofabrik Brandenburg extract already covers Berlin.
+Monthly CI builds produce one `.mbtiles` file per region. German states use per-state extracts; Benelux uses country-level extracts; France uses regional extracts (Île-de-France and Alsace); Mallorca is covered by the Islas Baleares extract; Graz and Vienna are clipped from Geofabrik's Austria extract to keep the published tiles small; Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single file because the Geofabrik Brandenburg extract already covers Berlin.
 
 | Region | Approx. Size |
 |--------|-------------|
+| `tiles_alsace.mbtiles` | first build pending |
 | `tiles_baden-wuerttemberg.mbtiles` | 274 MB |
 | `tiles_bayern.mbtiles` | 340 MB |
 | `tiles_belgium.mbtiles` | 351 MB |
 | `tiles_berlin_brandenburg.mbtiles` | 125 MB |
 | `tiles_bremen.mbtiles` | 9 MB |
 | `tiles_hamburg.mbtiles` | 19 MB |
+| `tiles_graz.mbtiles` | first build pending |
 | `tiles_hessen.mbtiles` | 152 MB |
 | `tiles_ile-de-france.mbtiles` | 142 MB |
+| `tiles_islas-baleares.mbtiles` | first build pending |
 | `tiles_italy-nord-ovest.mbtiles` | first build pending |
 | `tiles_luxembourg.mbtiles` | 16 MB |
 | `tiles_mecklenburg-vorpommern.mbtiles` | 54 MB |
@@ -74,6 +77,7 @@ Monthly CI builds produce one `.mbtiles` file per region. German states use per-
 | `tiles_sachsen-anhalt.mbtiles` | 79 MB |
 | `tiles_schleswig-holstein.mbtiles` | 74 MB |
 | `tiles_thueringen.mbtiles` | 70 MB |
+| `tiles_vienna.mbtiles` | first build pending |
 
 Sizes are from the most recent release and will vary slightly between builds as OSM data changes.
 
@@ -126,9 +130,9 @@ Test changes on a small region (Bremen at 9 MB, Luxembourg at 16 MB) before runn
 
 ## Automated Builds
 
-GitHub Actions generates tiles for all 20 regions monthly on the 3rd ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel. Results are published as a GitHub release tagged `latest`.
+GitHub Actions generates tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel. Results are published as timestamped GitHub releases. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output tile after uploading the artifact.
 
-Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy" → Run workflow.
+Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow.
 
 ## Technical Details
 

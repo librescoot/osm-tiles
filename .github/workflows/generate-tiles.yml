@@ -1,4 +1,4 @@
-name: Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy
+name: Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria
 
 permissions:
   contents: write
@@ -18,7 +18,42 @@ on:
           - berlin_brandenburg
 
 jobs:
+  prepare_austria:
+    if: github.event_name != 'workflow_dispatch' || inputs.region == 'all'
+    runs-on: self-hosted
+    steps:
+      - name: Clip Graz and Vienna from Geofabrik Austria
+        run: |
+          set -euo pipefail
+          command -v osmium >/dev/null || { sudo apt-get update && sudo apt-get install -y osmium-tool; }
+          work="${{ runner.temp }}/osm-austria-${{ github.run_id }}-${{ github.run_attempt }}"
+          mkdir -p "$work"
+          test "$(df -Pk "$work" | awk 'NR==2 {print $4}')" -ge 3145728 || { echo 'Need 3 GB free to prepare Austrian city extracts' >&2; exit 1; }
+          wget -q -O "$work/austria.osm.pbf" https://download.geofabrik.de/europe/austria-latest.osm.pbf
+          osmium extract -s smart -S types=multipolygon,boundary \
+            -b 15.15,46.90,15.70,47.25 \
+            -o "$work/graz.osm.pbf" "$work/austria.osm.pbf"
+          osmium extract -s smart -S types=multipolygon,boundary \
+            -b 16.05,48.03,16.72,48.42 \
+            -o "$work/vienna.osm.pbf" "$work/austria.osm.pbf"
+          rm "$work/austria.osm.pbf"
+          test -s "$work/graz.osm.pbf" && test -s "$work/vienna.osm.pbf"
+          ls -lh "$work"/*.osm.pbf
+
+      - name: Upload Austrian city extracts
+        uses: actions/upload-artifact@v4
+        with:
+          name: austrian-city-pbfs
+          path: ${{ runner.temp }}/osm-austria-${{ github.run_id }}-${{ github.run_attempt }}/*.osm.pbf
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Clean up Austrian extracts
+        if: always()
+        run: rm -rf "${{ runner.temp }}/osm-austria-${{ github.run_id }}-${{ github.run_attempt }}"
+
   generate_state_tiles:
+    needs: prepare_austria
     if: github.event_name != 'workflow_dispatch' || inputs.region == 'all'
     runs-on: self-hosted
     strategy:
@@ -44,6 +79,10 @@ jobs:
           - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
           - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
           - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
+          - { name: "alsace", url: "https://download.geofabrik.de/europe/france/alsace-latest.osm.pbf" }
+          - { name: "islas-baleares", label: "Islas Baleares (incl. Mallorca)", url: "https://download.geofabrik.de/europe/spain/islas-baleares-latest.osm.pbf" }
+          - { name: "graz" }
+          - { name: "vienna" }
           # Geofabrik has no per-regione Italian extracts; nord-ovest is the
           # smallest extract covering Lombardy (also includes Piedmont,
           # Liguria, Aosta Valley).
@@ -51,7 +90,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download Austrian city extract
+        if: matrix.state.name == 'graz' || matrix.state.name == 'vienna'
+        uses: actions/download-artifact@v4
+        with:
+          name: austrian-city-pbfs
+          path: /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}
+
+      - name: Stage Austrian city PBF
+        if: matrix.state.name == 'graz' || matrix.state.name == 'vienna'
+        run: ln -sf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}/${{ matrix.state.name }}.osm.pbf /tmp/${{ matrix.state.name }}.osm.pbf
+
       - name: Download OSM PBF for ${{ matrix.state.name }}
+        if: matrix.state.name != 'graz' && matrix.state.name != 'vienna'
         run: |
           echo "Downloading ${{ matrix.state.name }} PBF file..."
           wget -q -O /tmp/${{ matrix.state.name }}.osm.pbf ${{ matrix.state.url }}
@@ -100,6 +151,12 @@ jobs:
         with:
           name: tiles_${{ matrix.state.name }}
           path: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
+
+      - name: Free runner disk space
+        if: always()
+        run: |
+          rm -f /tmp/${{ matrix.state.name }}.osm.pbf /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
+          rm -rf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}
 
   # Fast validation/deployment path for Berlin without consuming runners for
   # the full regional matrix or publishing a partial production release.
@@ -175,6 +232,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: tiles_*
 
       - name: List all artifacts
         run: |

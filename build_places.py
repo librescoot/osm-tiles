@@ -35,10 +35,8 @@ from shapely.strtree import STRtree
 
 
 SIMPLIFY_TOLERANCE_DEG = 0.0005   # ~50 m at mid-latitudes
-# L4 picks up the German Stadtstaaten (Berlin, Hamburg) whose city polygon is
-# the Bundesland; the de:place=city filter below keeps regular Bundesländer
-# out. Bremen's L4 spans Bremen + Bremerhaven and is covered by its L6
-# children already.
+# L4 picks up city-states (Berlin, Hamburg, Vienna); L6 picks up statutory
+# cities such as Graz. The city filters keep ordinary states and districts out.
 ADMIN_LEVELS = {"4", "6", "8", "9"}
 DIRECTION_STOP = {"West", "Ost", "Nord", "Süd"}
 STREET_NAME_SUFFIX_RE = re.compile(
@@ -186,10 +184,12 @@ class PlaceCollector(osmium.SimpleHandler):
         level = tags.get("admin_level")
         if level not in ADMIN_LEVELS:
             return
-        if level == "4" and tags.get("de:place") != "city":
+        city_admin = (tags.get("de:place") == "city" or
+                      tags.get("name:prefix:at") == "Statutarstadt")
+        if level == "4" and not city_admin:
             self.skipped_l4_non_city += 1
             return
-        if level == "6" and tags.get("de:place") != "city":
+        if level == "6" and not city_admin:
             self.skipped_l6_non_city += 1
             return
 

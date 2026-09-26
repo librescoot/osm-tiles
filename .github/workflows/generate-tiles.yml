@@ -218,7 +218,7 @@ jobs:
   release:
     needs: [select_regions, generate_state_tiles]
     runs-on: self-hosted
-    if: github.ref == 'refs/heads/main' && needs.generate_state_tiles.result == 'success'
+    if: always() && github.ref == 'refs/heads/main' && needs.generate_state_tiles.result == 'success'
     steps:
       - name: Download all tile artifacts
         uses: actions/download-artifact@v4

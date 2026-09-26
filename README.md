@@ -132,7 +132,7 @@ Test changes on a small region (Bremen at 9 MB, Luxembourg at 16 MB) before runn
 
 GitHub Actions generates tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel. Results are published as timestamped GitHub releases. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output tile after uploading the artifact.
 
-Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow.
+Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Select `new_regions` to build only Alsace, Islas Baleares (Mallorca), Graz, and Vienna. This uploads four downloadable workflow artifacts without publishing a partial release. The `all` option and monthly schedule build the full region list in `.github/regions.json`.
 
 ## Technical Details
 

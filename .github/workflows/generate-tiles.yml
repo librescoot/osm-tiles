@@ -9,17 +9,47 @@ on:
   workflow_dispatch:
     inputs:
       region:
-        description: "Region to build (single-region runs upload an artifact but do not publish a release)"
+        description: "Regions to build (partial runs upload artifacts but do not publish a release)"
         required: true
         type: choice
         default: all
         options:
           - all
+          - new_regions
           - berlin_brandenburg
 
 jobs:
+  select_regions:
+    if: github.event_name != 'workflow_dispatch' || inputs.region != 'berlin_brandenburg'
+    runs-on: ubuntu-latest
+    outputs:
+      regions: ${{ steps.choose.outputs.regions }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select regions for this run
+        id: choose
+        env:
+          REGION_SET: ${{ inputs.region || 'all' }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          with open('.github/regions.json') as f:
+              regions = json.load(f)
+          selection = os.environ['REGION_SET']
+          if selection == 'new_regions':
+              names = {'alsace', 'islas-baleares', 'graz', 'vienna'}
+              regions = [r for r in regions if r['name'] in names]
+              if {r['name'] for r in regions} != names:
+                  raise SystemExit('Missing a new region in .github/regions.json')
+          elif selection != 'all':
+              raise SystemExit(f'Unknown region selection: {selection}')
+          print('regions=' + json.dumps(regions, separators=(',', ':')))
+          PY
+
   prepare_austria:
-    if: github.event_name != 'workflow_dispatch' || inputs.region == 'all'
+    if: github.event_name != 'workflow_dispatch' || inputs.region != 'berlin_brandenburg'
     runs-on: self-hosted
     steps:
       - name: Clip Graz and Vienna from Geofabrik Austria
@@ -53,40 +83,13 @@ jobs:
         run: rm -rf "${{ runner.temp }}/osm-austria-${{ github.run_id }}-${{ github.run_attempt }}"
 
   generate_state_tiles:
-    needs: prepare_austria
-    if: github.event_name != 'workflow_dispatch' || inputs.region == 'all'
+    needs: [select_regions, prepare_austria]
+    if: github.event_name != 'workflow_dispatch' || inputs.region != 'berlin_brandenburg'
     runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
-        state:
-          - { name: "baden-wuerttemberg", url: "https://download.geofabrik.de/europe/germany/baden-wuerttemberg-latest.osm.pbf" }
-          - { name: "bayern", url: "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf" }
-          - { name: "berlin_brandenburg", url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf" }
-          - { name: "bremen", url: "https://download.geofabrik.de/europe/germany/bremen-latest.osm.pbf" }
-          - { name: "hamburg", url: "https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf" }
-          - { name: "hessen", url: "https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf" }
-          - { name: "mecklenburg-vorpommern", url: "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-latest.osm.pbf" }
-          - { name: "niedersachsen", label: "Niedersachsen (incl. Bremen)", url: "https://download.geofabrik.de/europe/germany/niedersachsen-latest.osm.pbf" }
-          - { name: "nordrhein-westfalen", url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf" }
-          - { name: "rheinland-pfalz", url: "https://download.geofabrik.de/europe/germany/rheinland-pfalz-latest.osm.pbf" }
-          - { name: "saarland", url: "https://download.geofabrik.de/europe/germany/saarland-latest.osm.pbf" }
-          - { name: "sachsen", url: "https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf" }
-          - { name: "sachsen-anhalt", url: "https://download.geofabrik.de/europe/germany/sachsen-anhalt-latest.osm.pbf" }
-          - { name: "schleswig-holstein", url: "https://download.geofabrik.de/europe/germany/schleswig-holstein-latest.osm.pbf" }
-          - { name: "thueringen", url: "https://download.geofabrik.de/europe/germany/thueringen-latest.osm.pbf" }
-          - { name: "netherlands", url: "https://download.geofabrik.de/europe/netherlands-latest.osm.pbf" }
-          - { name: "belgium", url: "https://download.geofabrik.de/europe/belgium-latest.osm.pbf" }
-          - { name: "luxembourg", url: "https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf" }
-          - { name: "ile-de-france", url: "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf" }
-          - { name: "alsace", url: "https://download.geofabrik.de/europe/france/alsace-latest.osm.pbf" }
-          - { name: "islas-baleares", label: "Islas Baleares (incl. Mallorca)", url: "https://download.geofabrik.de/europe/spain/islas-baleares-latest.osm.pbf" }
-          - { name: "graz" }
-          - { name: "vienna" }
-          # Geofabrik has no per-regione Italian extracts; nord-ovest is the
-          # smallest extract covering Lombardy (also includes Piedmont,
-          # Liguria, Aosta Valley).
-          - { name: "italy-nord-ovest", label: "Nord-Ovest (incl. Lombardy)", url: "https://download.geofabrik.de/europe/italy/nord-ovest-latest.osm.pbf" }
+        state: ${{ fromJSON(needs.select_regions.outputs.regions) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -223,10 +226,8 @@ jobs:
   release:
     needs: [generate_state_tiles]
     runs-on: self-hosted
-    # Only publish to the `latest` release from main. Workflow runs on feature
-    # branches still produce artifacts (downloadable from the workflow run UI)
-    # but must not overwrite the production release.
-    if: github.ref == 'refs/heads/main'
+    # Publish only complete runs from main; partial builds remain workflow artifacts.
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.region == 'all')
     steps:
       - name: Download all tile artifacts
         uses: actions/download-artifact@v4

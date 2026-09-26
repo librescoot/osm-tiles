@@ -8,28 +8,25 @@ on:
     - cron: '0 0 1 * *'  # Monthly on the 1st at midnight UTC
   workflow_dispatch:
     inputs:
-      region:
-        description: "Regions to build (partial runs upload artifacts but do not publish a release)"
+      regions:
+        description: "all or comma-separated region IDs (e.g. alsace,islas-baleares,graz,vienna)"
         required: true
-        type: choice
+        type: string
         default: all
-        options:
-          - all
-          - new_regions
-          - berlin_brandenburg
 
 jobs:
   select_regions:
-    if: github.event_name != 'workflow_dispatch' || inputs.region != 'berlin_brandenburg'
     runs-on: ubuntu-latest
     outputs:
       regions: ${{ steps.choose.outputs.regions }}
+      count: ${{ steps.choose.outputs.count }}
+      needs_austria: ${{ steps.choose.outputs.needs_austria }}
     steps:
       - uses: actions/checkout@v4
       - name: Select regions for this run
         id: choose
         env:
-          REGION_SET: ${{ inputs.region || 'all' }}
+          REGION_SET: ${{ inputs.regions || 'all' }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
@@ -37,19 +34,23 @@ jobs:
 
           with open('.github/regions.json') as f:
               regions = json.load(f)
-          selection = os.environ['REGION_SET']
-          if selection == 'new_regions':
-              names = {'alsace', 'islas-baleares', 'graz', 'vienna'}
-              regions = [r for r in regions if r['name'] in names]
-              if {r['name'] for r in regions} != names:
-                  raise SystemExit('Missing a new region in .github/regions.json')
-          elif selection != 'all':
-              raise SystemExit(f'Unknown region selection: {selection}')
+          selection = os.environ['REGION_SET'].strip()
+          if selection != 'all':
+              names = [name.strip() for name in selection.split(',')]
+              available = {region['name']: region for region in regions}
+              if not names or any(name not in available for name in names):
+                  raise SystemExit(f'Unknown or empty region in: {selection}')
+              if len(names) != len(set(names)):
+                  raise SystemExit(f'Duplicate region in: {selection}')
+              regions = [available[name] for name in names]
           print('regions=' + json.dumps(regions, separators=(',', ':')))
+          print('count=' + str(len(regions)))
+          print('needs_austria=' + str(any(r['name'] in ('graz', 'vienna') for r in regions)).lower())
           PY
 
   prepare_austria:
-    if: github.event_name != 'workflow_dispatch' || inputs.region != 'berlin_brandenburg'
+    needs: select_regions
+    if: needs.select_regions.outputs.needs_austria == 'true'
     runs-on: self-hosted
     steps:
       - name: Clip Graz and Vienna from Geofabrik Austria
@@ -84,7 +85,7 @@ jobs:
 
   generate_state_tiles:
     needs: [select_regions, prepare_austria]
-    if: github.event_name != 'workflow_dispatch' || inputs.region != 'berlin_brandenburg'
+    if: always() && needs.select_regions.result == 'success' && (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false'))
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -161,73 +162,10 @@ jobs:
           rm -f /tmp/${{ matrix.state.name }}.osm.pbf /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
           rm -rf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}
 
-  # Fast validation/deployment path for Berlin without consuming runners for
-  # the full regional matrix or publishing a partial production release.
-  generate_berlin_brandenburg:
-    if: github.event_name == 'workflow_dispatch' && inputs.region == 'berlin_brandenburg'
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Berlin/Brandenburg OSM PBF
-        run: |
-          wget -q -O /tmp/berlin_brandenburg.osm.pbf \
-            https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf
-          ls -lh /tmp/berlin_brandenburg.osm.pbf
-
-      - name: Generate Berlin/Brandenburg tiles
-        run: |
-          mkdir -p /tmp/tilemaker-artifacts
-          sudo docker run --rm \
-            -v $(pwd):/var/tm \
-            -v /tmp:/tmp \
-            -w /var/tm \
-            --entrypoint tilemaker \
-            versatiles/versatiles-tilemaker \
-              --config tilemaker/config.json \
-              --process tilemaker/process.lua \
-              --input /tmp/berlin_brandenburg.osm.pbf \
-              --output /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
-          sudo chown $(id -u):$(id -g) \
-            /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
-          ls -lh /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
-
-      - name: Set up Python for geocoding index
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install geocoding index dependencies
-        run: pip install -r requirements.txt
-
-      - name: Build and validate geocoding index
-        run: |
-          python3 build_places.py \
-            /tmp/berlin_brandenburg.osm.pbf \
-            /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
-          python3 - <<'PY'
-          import sqlite3
-          path = "/tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles"
-          db = sqlite3.connect(path)
-          count = db.execute("SELECT COUNT(*) FROM place_street_tiles").fetchone()[0]
-          if count <= 0:
-              raise SystemExit("place_street_tiles is empty")
-          print(f"validated {count} indexed street/tile rows")
-          db.close()
-          PY
-          ls -lh /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
-
-      - name: Upload Berlin/Brandenburg tiles
-        uses: actions/upload-artifact@v4
-        with:
-          name: tiles_berlin_brandenburg
-          path: /tmp/tilemaker-artifacts/tiles_berlin_brandenburg.mbtiles
-
   release:
-    needs: [generate_state_tiles]
+    needs: [select_regions, generate_state_tiles]
     runs-on: self-hosted
-    # Publish only complete runs from main; partial builds remain workflow artifacts.
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.region == 'all')
+    if: github.ref == 'refs/heads/main' && needs.generate_state_tiles.result == 'success'
     steps:
       - name: Download all tile artifacts
         uses: actions/download-artifact@v4
@@ -256,8 +194,8 @@ jobs:
           set -euo pipefail
           tag="tiles-$(date -u +%Y%m%dT%H%M%SZ)"
           count=$(find artifacts -name '*.mbtiles' -type f | wc -l)
-          if [ "$count" -eq 0 ]; then
-            echo "no tile artifacts to publish" >&2
+          if [ "$count" -ne "${{ needs.select_regions.outputs.count }}" ]; then
+            echo "expected ${{ needs.select_regions.outputs.count }} tile artifacts, got $count" >&2
             exit 1
           fi
           echo "publishing $count assets as $tag"
@@ -277,39 +215,35 @@ jobs:
           files: artifacts/**/*.mbtiles
           fail_on_unmatched_files: true
 
-      # Keeps a few generations so a download already in flight against an
-      # older build can still finish.
-      # Housekeeping must not be able to fail a good release, and this action is
-      # not otherwise used on these runners.
+      # Keep three generations per region so partial builds cannot evict
+      # unchanged regions or downloads already in flight.
       - name: Prune old tile releases
         continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            const keep = 3;
             const releases = await github.paginate(github.rest.repos.listReleases, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100,
+              owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
             });
-            const tiles = releases
-              .filter(r => r.tag_name.startsWith('tiles-'))
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-            for (const r of tiles.slice(keep)) {
-              core.info(`deleting ${r.tag_name}`);
+            const kept = new Map();
+            for (const release of releases.filter(r => r.tag_name.startsWith('tiles-'))
+              .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))) {
+              const regions = [...new Set(release.assets.map(a =>
+                /^tiles_(.+)\.mbtiles$/.exec(a.name)?.[1]).filter(Boolean))];
+              if (regions.some(region => (kept.get(region) ?? 0) < 3)) {
+                for (const region of regions) kept.set(region, (kept.get(region) ?? 0) + 1);
+                continue;
+              }
               await github.rest.repos.deleteRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                release_id: r.id,
+                owner: context.repo.owner, repo: context.repo.repo, release_id: release.id,
               });
               try {
                 await github.rest.git.deleteRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `tags/${r.tag_name}`,
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  ref: `tags/${release.tag_name}`,
                 });
               } catch (e) {
-                core.warning(`could not delete tag ${r.tag_name}: ${e.message}`);
+                core.warning(`could not delete tag ${release.tag_name}: ${e.message}`);
               }
             }
 

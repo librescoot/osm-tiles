@@ -83,7 +83,7 @@ Sizes are from the most recent release and will vary slightly between builds as 
 
 ## Installation
 
-Download the `.mbtiles` file for your region from the [latest release](../../releases/tag/latest), rename it to `map.mbtiles`, and copy it to the DBC's `/data/maps/` directory — either via USB update mode or directly via the [data-server](https://github.com/librescoot/data-server) HTTP API.
+Download the `.mbtiles` file for your region from [downloads.librescoot.org](https://downloads.librescoot.org/), rename it to `map.mbtiles`, and copy it to the DBC's `/data/maps/` directory — either via USB update mode or directly via the [data-server](https://github.com/librescoot/data-server) HTTP API.
 
 ## Local Development
 
@@ -132,7 +132,7 @@ Test changes on a small region (Bremen at 9 MB, Luxembourg at 16 MB) before runn
 
 GitHub Actions generates tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel. Results are published as timestamped GitHub releases. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output tile after uploading the artifact.
 
-Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Select `new_regions` to build only Alsace, Islas Baleares (Mallorca), Graz, and Vienna. This uploads four downloadable workflow artifacts without publishing a partial release. The `all` option and monthly schedule build the full region list in `.github/regions.json`.
+Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Enter `all` or comma-separated region IDs such as `alsace,islas-baleares,graz,vienna`. A successful build on `main` publishes a timestamped release with only the selected regions; builds on other branches leave workflow artifacts. Monthly runs build the full list in `.github/regions.json`.
 
 ## Technical Details
 

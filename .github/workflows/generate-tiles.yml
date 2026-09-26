@@ -103,7 +103,9 @@ jobs:
 
       - name: Stage Austrian city PBF
         if: matrix.state.name == 'graz' || matrix.state.name == 'vienna'
-        run: ln -sf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}/${{ matrix.state.name }}.osm.pbf /tmp/${{ matrix.state.name }}.osm.pbf
+        run: |
+          cp /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}/${{ matrix.state.name }}.osm.pbf /tmp/${{ matrix.state.name }}.osm.pbf
+          test -s /tmp/${{ matrix.state.name }}.osm.pbf
 
       - name: Download OSM PBF for ${{ matrix.state.name }}
         if: matrix.state.name != 'graz' && matrix.state.name != 'vienna'

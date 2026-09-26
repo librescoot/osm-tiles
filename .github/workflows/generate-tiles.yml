@@ -215,7 +215,9 @@ jobs:
           files: artifacts/**/*.mbtiles
           fail_on_unmatched_files: true
 
+      # Enable after the downloads site serves the per-region index.
       - name: Generate app token for downloads rebuild
+        if: vars.MAPS_INDEX_READY == 'true'
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
@@ -225,6 +227,7 @@ jobs:
           repositories: downloads.librescoot.org
 
       - name: Trigger downloads site rebuild
+        if: vars.MAPS_INDEX_READY == 'true'
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ steps.app-token.outputs.token }}

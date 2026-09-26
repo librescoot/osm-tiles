@@ -1,4 +1,4 @@
-name: Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria
+name: Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria + Switzerland
 
 permissions:
   contents: write
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       regions:
-        description: "all or comma-separated region IDs (e.g. alsace,islas-baleares,graz,vienna)"
+        description: "all or comma-separated region IDs (e.g. alsace,islas-baleares,graz,vienna,zurich)"
         required: true
         type: string
         default: all
@@ -21,6 +21,7 @@ jobs:
       regions: ${{ steps.choose.outputs.regions }}
       count: ${{ steps.choose.outputs.count }}
       needs_austria: ${{ steps.choose.outputs.needs_austria }}
+      needs_switzerland: ${{ steps.choose.outputs.needs_switzerland }}
     steps:
       - uses: actions/checkout@v4
       - name: Select regions for this run
@@ -46,6 +47,7 @@ jobs:
           print('regions=' + json.dumps(regions, separators=(',', ':')))
           print('count=' + str(len(regions)))
           print('needs_austria=' + str(any(r['name'] in ('graz', 'vienna') for r in regions)).lower())
+          print('needs_switzerland=' + str(any(r['name'] == 'zurich' for r in regions)).lower())
           PY
 
   prepare_austria:
@@ -83,9 +85,44 @@ jobs:
         if: always()
         run: rm -rf "${{ runner.temp }}/osm-austria-${{ github.run_id }}-${{ github.run_attempt }}"
 
+  prepare_switzerland:
+    needs: select_regions
+    if: needs.select_regions.outputs.needs_switzerland == 'true'
+    runs-on: self-hosted
+    steps:
+      - name: Clip canton Zürich from Geofabrik Switzerland
+        run: |
+          set -euo pipefail
+          command -v osmium >/dev/null || { sudo apt-get update && sudo apt-get install -y osmium-tool; }
+          work="${{ runner.temp }}/osm-switzerland-${{ github.run_id }}-${{ github.run_attempt }}"
+          mkdir -p "$work"
+          test "$(df -Pk "$work" | awk 'NR==2 {print $4}')" -ge 3145728 || { echo 'Need 3 GB free to prepare the Zürich extract' >&2; exit 1; }
+          wget -q -O "$work/switzerland.osm.pbf" https://download.geofabrik.de/europe/switzerland-latest.osm.pbf
+          osmium extract -s smart -S types=multipolygon,boundary \
+            -b 8.08,46.97,9.27,47.88 \
+            -o "$work/zurich.osm.pbf" "$work/switzerland.osm.pbf"
+          rm "$work/switzerland.osm.pbf"
+          test -s "$work/zurich.osm.pbf"
+          ls -lh "$work/zurich.osm.pbf"
+
+      - name: Upload Zürich extract
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiss-canton-pbf
+          path: ${{ runner.temp }}/osm-switzerland-${{ github.run_id }}-${{ github.run_attempt }}/zurich.osm.pbf
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Clean up Swiss extract
+        if: always()
+        run: rm -rf "${{ runner.temp }}/osm-switzerland-${{ github.run_id }}-${{ github.run_attempt }}"
+
   generate_state_tiles:
-    needs: [select_regions, prepare_austria]
-    if: always() && needs.select_regions.result == 'success' && (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false'))
+    needs: [select_regions, prepare_austria, prepare_switzerland]
+    if: >-
+      always() && needs.select_regions.result == 'success' &&
+      (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false')) &&
+      (needs.prepare_switzerland.result == 'success' || (needs.prepare_switzerland.result == 'skipped' && needs.select_regions.outputs.needs_switzerland == 'false'))
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -107,8 +144,21 @@ jobs:
           cp /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}/${{ matrix.state.name }}.osm.pbf /tmp/${{ matrix.state.name }}.osm.pbf
           test -s /tmp/${{ matrix.state.name }}.osm.pbf
 
+      - name: Download Zürich extract
+        if: matrix.state.name == 'zurich'
+        uses: actions/download-artifact@v4
+        with:
+          name: swiss-canton-pbf
+          path: /tmp/swiss-canton-pbf-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Stage Zürich PBF
+        if: matrix.state.name == 'zurich'
+        run: |
+          cp /tmp/swiss-canton-pbf-${{ github.run_id }}-${{ github.run_attempt }}/zurich.osm.pbf /tmp/zurich.osm.pbf
+          test -s /tmp/zurich.osm.pbf
+
       - name: Download OSM PBF for ${{ matrix.state.name }}
-        if: matrix.state.name != 'graz' && matrix.state.name != 'vienna'
+        if: matrix.state.name != 'graz' && matrix.state.name != 'vienna' && matrix.state.name != 'zurich'
         run: |
           echo "Downloading ${{ matrix.state.name }} PBF file..."
           wget -q -O /tmp/${{ matrix.state.name }}.osm.pbf ${{ matrix.state.url }}
@@ -162,7 +212,8 @@ jobs:
         if: always()
         run: |
           rm -f /tmp/${{ matrix.state.name }}.osm.pbf /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
-          rm -rf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}
+          rm -rf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }} \
+            /tmp/swiss-canton-pbf-${{ github.run_id }}-${{ github.run_attempt }}
 
   release:
     needs: [select_regions, generate_state_tiles]

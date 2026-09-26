@@ -50,21 +50,21 @@ The polygon assignment uses point-in-polygon against admin boundaries — a Mün
 
 ## Generated Files
 
-Monthly CI builds produce one `.mbtiles` file per region. German states use per-state extracts; Benelux uses country-level extracts; France uses regional extracts (Île-de-France and Alsace); Mallorca is covered by the Islas Baleares extract; Graz and Vienna are clipped from Geofabrik's Austria extract to keep the published tiles small; Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single file because the Geofabrik Brandenburg extract already covers Berlin.
+Monthly CI builds produce one `.mbtiles` file per region. German states use per-state extracts; Benelux uses country-level extracts; France uses regional extracts (Île-de-France and Alsace); Mallorca is covered by the Islas Baleares extract; Graz and Vienna are clipped from Geofabrik's Austria extract; Kanton Zürich is clipped from Geofabrik's Switzerland extract with an approximately 20 km buffer (within Switzerland); Italy uses Geofabrik's macro-area extracts (Nord-Ovest covers Lombardy plus Piedmont, Liguria and Aosta Valley — Geofabrik offers no per-regione extracts). Berlin and Brandenburg are combined into a single file because the Geofabrik Brandenburg extract already covers Berlin.
 
 | Region | Approx. Size |
 |--------|-------------|
-| `tiles_alsace.mbtiles` | first build pending |
+| `tiles_alsace.mbtiles` | 83 MB |
 | `tiles_baden-wuerttemberg.mbtiles` | 274 MB |
 | `tiles_bayern.mbtiles` | 340 MB |
 | `tiles_belgium.mbtiles` | 351 MB |
 | `tiles_berlin_brandenburg.mbtiles` | 125 MB |
 | `tiles_bremen.mbtiles` | 9 MB |
 | `tiles_hamburg.mbtiles` | 19 MB |
-| `tiles_graz.mbtiles` | first build pending |
+| `tiles_graz.mbtiles` | 25 MB |
 | `tiles_hessen.mbtiles` | 152 MB |
 | `tiles_ile-de-france.mbtiles` | 142 MB |
-| `tiles_islas-baleares.mbtiles` | first build pending |
+| `tiles_islas-baleares.mbtiles` | 31 MB |
 | `tiles_italy-nord-ovest.mbtiles` | first build pending |
 | `tiles_luxembourg.mbtiles` | 16 MB |
 | `tiles_mecklenburg-vorpommern.mbtiles` | 54 MB |
@@ -77,7 +77,8 @@ Monthly CI builds produce one `.mbtiles` file per region. German states use per-
 | `tiles_sachsen-anhalt.mbtiles` | 79 MB |
 | `tiles_schleswig-holstein.mbtiles` | 74 MB |
 | `tiles_thueringen.mbtiles` | 70 MB |
-| `tiles_vienna.mbtiles` | first build pending |
+| `tiles_vienna.mbtiles` | 39 MB |
+| `tiles_zurich.mbtiles` | first build pending |
 
 Sizes are from the most recent release and will vary slightly between builds as OSM data changes.
 

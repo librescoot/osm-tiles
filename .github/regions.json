@@ -22,5 +22,6 @@
   {"name":"islas-baleares","label":"Islas Baleares (incl. Mallorca)","url":"https://download.geofabrik.de/europe/spain/islas-baleares-latest.osm.pbf"},
   {"name":"graz"},
   {"name":"vienna"},
+  {"name":"zurich","label":"Kanton Zürich"},
   {"name":"italy-nord-ovest","label":"Nord-Ovest (incl. Lombardy)","url":"https://download.geofabrik.de/europe/italy/nord-ovest-latest.osm.pbf"}
 ]

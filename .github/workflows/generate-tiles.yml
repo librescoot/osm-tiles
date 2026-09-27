@@ -16,14 +16,14 @@ on:
 
 jobs:
   select_regions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       regions: ${{ steps.choose.outputs.regions }}
       count: ${{ steps.choose.outputs.count }}
       needs_austria: ${{ steps.choose.outputs.needs_austria }}
       needs_switzerland: ${{ steps.choose.outputs.needs_switzerland }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Select regions for this run
         id: choose
         env:
@@ -74,7 +74,7 @@ jobs:
           ls -lh "$work"/*.osm.pbf
 
       - name: Upload Austrian city extracts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: austrian-city-pbfs
           path: ${{ runner.temp }}/osm-austria-${{ github.run_id }}-${{ github.run_attempt }}/*.osm.pbf
@@ -106,7 +106,7 @@ jobs:
           ls -lh "$work/zurich.osm.pbf"
 
       - name: Upload Zürich extract
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: swiss-canton-pbf
           path: ${{ runner.temp }}/osm-switzerland-${{ github.run_id }}-${{ github.run_attempt }}/zurich.osm.pbf
@@ -129,11 +129,11 @@ jobs:
       matrix:
         state: ${{ fromJSON(needs.select_regions.outputs.regions) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download Austrian city extract
         if: matrix.state.name == 'graz' || matrix.state.name == 'vienna'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: austrian-city-pbfs
           path: /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }}
@@ -146,7 +146,7 @@ jobs:
 
       - name: Download Zürich extract
         if: matrix.state.name == 'zurich'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: swiss-canton-pbf
           path: /tmp/swiss-canton-pbf-${{ github.run_id }}-${{ github.run_attempt }}
@@ -188,7 +188,7 @@ jobs:
           ls -lh /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
       - name: Set up Python for geocoding index
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -203,7 +203,7 @@ jobs:
           ls -lh /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
       - name: Upload tiles for ${{ matrix.state.name }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tiles_${{ matrix.state.name }}
           path: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
@@ -221,7 +221,7 @@ jobs:
     if: always() && github.ref == 'refs/heads/main' && needs.generate_state_tiles.result == 'success'
     steps:
       - name: Download all tile artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: tiles_*
@@ -258,7 +258,7 @@ jobs:
       # self-hosted runners, and this is the action the firmware build already
       # uses on them.
       - name: Publish release
-        uses: softprops/action-gh-release@v2.4.2
+        uses: softprops/action-gh-release@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.publish.outputs.tag }}
@@ -272,7 +272,7 @@ jobs:
       - name: Generate app token for downloads rebuild
         if: vars.MAPS_INDEX_READY == 'true'
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -281,7 +281,7 @@ jobs:
 
       - name: Trigger downloads site rebuild
         if: vars.MAPS_INDEX_READY == 'true'
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ steps.app-token.outputs.token }}
           repository: librescoot/downloads.librescoot.org

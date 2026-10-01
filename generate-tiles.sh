@@ -72,7 +72,7 @@ for entry in "${REGIONS[@]}"; do
 
     if [ ! -f "$pbf_file" ]; then
         echo "Downloading $region..."
-        wget -q --show-progress -O "$pbf_file" "$url"
+        bash "$(dirname "$0")/download-pbf.sh" "$url" "$pbf_file"
     else
         echo "⊘ Using existing PBF for $region"
     fi

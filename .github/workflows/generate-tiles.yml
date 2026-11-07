@@ -119,10 +119,45 @@ jobs:
         if: always()
         run: rm -rf "${{ runner.temp }}/osm-switzerland-${{ github.run_id }}-${{ github.run_attempt }}"
 
+  # Tilemaker is built from a pinned commit instead of a floating image tag.
+  # Building once and passing the image to the region jobs keeps 25 matrix jobs
+  # from compiling the same source and guarantees they all use identical bytes.
+  prepare_tilemaker:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build tilemaker image
+        run: |
+          set -euo pipefail
+          docker build -t tilemaker-deterministic tools/tilemaker
+
+      - name: Save tilemaker image
+        run: |
+          set -euo pipefail
+          command -v zstd >/dev/null || { sudo apt-get update && sudo apt-get install -y zstd; }
+          work="${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}"
+          mkdir -p "$work"
+          docker save tilemaker-deterministic | zstd -3 -T0 -q -o "$work/tilemaker-deterministic.tar.zst"
+          ls -lh "$work"
+
+      - name: Upload tilemaker image
+        uses: actions/upload-artifact@v7
+        with:
+          name: tilemaker-image
+          path: ${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}/tilemaker-deterministic.tar.zst
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Clean up tilemaker image
+        if: always()
+        run: rm -rf "${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}"
+
   generate_state_tiles:
-    needs: [select_regions, prepare_austria, prepare_switzerland]
+    needs: [select_regions, prepare_tilemaker, prepare_austria, prepare_switzerland]
     if: >-
       always() && needs.select_regions.result == 'success' &&
+      needs.prepare_tilemaker.result == 'success' &&
       (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false')) &&
       (needs.prepare_switzerland.result == 'success' || (needs.prepare_switzerland.result == 'skipped' && needs.select_regions.outputs.needs_switzerland == 'false'))
     runs-on: self-hosted
@@ -167,6 +202,21 @@ jobs:
           echo "Download completed for ${{ matrix.state.name }}"
           ls -lh /tmp/${{ matrix.state.name }}.osm.pbf
 
+      - name: Download tilemaker image
+        uses: actions/download-artifact@v8
+        with:
+          name: tilemaker-image
+          path: ${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Load tilemaker image
+        run: |
+          set -euo pipefail
+          zstd -d -q -f "${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}/tilemaker-deterministic.tar.zst" \
+            -o "${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}/tilemaker-deterministic.tar"
+          docker load -i "${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}/tilemaker-deterministic.tar"
+          rm -f "${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}/tilemaker-deterministic.tar"
+          docker image inspect tilemaker-deterministic >/dev/null
+
       - name: Generate tiles for ${{ matrix.state.name }}
         run: |
           echo "Generating tiles for ${{ matrix.state.name }}..."
@@ -175,8 +225,8 @@ jobs:
             -v $(pwd):/var/tm \
             -v /tmp:/tmp \
             -w /var/tm \
-            --entrypoint tilemaker \
-            versatiles/versatiles-tilemaker \
+            tilemaker-deterministic \
+              --threads 4 \
               --config tilemaker/config.json \
               --process tilemaker/process.lua \
               --input /tmp/${{ matrix.state.name }}.osm.pbf \
@@ -204,6 +254,11 @@ jobs:
             /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
           ls -lh /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
+      - name: Verify tiles for ${{ matrix.state.name }}
+        run: |
+          python3 tools/verify-mbtiles.py \
+            /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
+
       - name: Upload tiles for ${{ matrix.state.name }}
         uses: actions/upload-artifact@v7
         with:
@@ -217,6 +272,9 @@ jobs:
           rm -rf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }} \
             /tmp/swiss-canton-pbf-${{ github.run_id }}-${{ github.run_attempt }}
 
+  # Only main publishes: a branch run produces Actions artifacts for review, so a
+  # generator change can be inspected on a scooter without touching the
+  # public per-region index.
   release:
     needs: [select_regions, generate_state_tiles]
     runs-on: self-hosted

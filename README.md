@@ -94,17 +94,25 @@ Download the `.mbtiles` file for your region from [downloads.librescoot.org](htt
 # Download a regional OSM extract
 bash download-pbf.sh https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf /tmp/brandenburg.osm.pbf
 
+# Build the pinned generator (see "Generator" below)
+docker build -t tilemaker-deterministic tools/tilemaker
+
 # Generate tiles
 docker run --rm \
   -v "$(pwd):/var/tm" \
   -v "/tmp:/tmp" \
   -w /var/tm \
-  --entrypoint tilemaker \
-  versatiles/versatiles-tilemaker \
+  tilemaker-deterministic \
     --config tilemaker/config.json \
     --process tilemaker/process.lua \
     --input /tmp/brandenburg.osm.pbf \
     --output tiles-output/tiles_berlin_brandenburg.mbtiles
+
+# Add the geocoding index tables the dashboard searches
+python3 build_places.py /tmp/brandenburg.osm.pbf tiles-output/tiles_berlin_brandenburg.mbtiles
+
+# Check the result the same way CI does
+python3 tools/verify-mbtiles.py tiles-output/tiles_berlin_brandenburg.mbtiles
 ```
 
 Or use the batch script to generate all states:
@@ -137,13 +145,16 @@ PBF downloads require `curl` and GNU `date`. They log errors and retry up to thr
 
 Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Enter `all` or comma-separated region IDs such as `alsace,islas-baleares,graz,vienna`. A successful build on `main` publishes a timestamped release with only the selected regions; builds on other branches leave workflow artifacts. Monthly runs build the full list in `.github/regions.json`.
 
+A branch run stops at workflow artifacts: it builds and verifies the tiles but does not create a release, so a generator change can be tried on a scooter without moving the public per-region index. `tools/verify-mbtiles.py` opens every file read-only, checks SQLite integrity, metadata, every tile's gzip stream, a sample of decoded vector tiles and the geocoding tables, and fails the region job on any problem.
+
 ## Technical Details
 
 - **Format**: MBTiles (SQLite + gzip-compressed PBF vector tiles)
 - **Zoom**: 0–14
 - **Projection**: Web Mercator (EPSG:3857)
 - **Source**: [Geofabrik](https://download.geofabrik.de/europe/) regional extracts of [OpenStreetMap](https://www.openstreetmap.org)
-- **Generator**: [Tilemaker](https://github.com/systemed/tilemaker) via the [versatiles](https://versatiles.org) Docker image
+- **Generator**: [Tilemaker](https://github.com/systemed/tilemaker), built from the commit pinned in `tools/tilemaker/Dockerfile` ([upstream PR 981](https://github.com/systemed/tilemaker/pull/981)), which makes tile content independent of thread scheduling
+- **Verification**: `tools/verify-mbtiles.py` runs on every built region before upload
 
 ## License
 

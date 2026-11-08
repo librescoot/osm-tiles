@@ -15,10 +15,12 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -58,7 +60,8 @@ def bases(releases, limit):
                 continue
             if all(entry["digest"] != digest for entry in candidates):
                 candidates.append({"version": tag, "digest": digest,
-                                   "size": asset["size"], "name": asset["name"]})
+                                   "size": asset["size"], "name": asset["name"],
+                                   "release": release})
     return result
 
 
@@ -86,11 +89,40 @@ def read_container(path):
     return header, payload
 
 
+API = "https://api.github.com/repos/librescoot/osm-tiles"
+
+
+def _request(url):
+    # The self-hosted runners have no gh CLI, so the API is called directly.
+    headers = {"User-Agent": "librescoot-map-deltas", "Accept": "application/vnd.github+json"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return urllib.request.Request(url, headers=headers)
+
+
 def release_pages():
-    out = subprocess.check_output(
-        ["gh", "api", "--paginate", "--slurp",
-         "repos/librescoot/osm-tiles/releases?per_page=100"])
-    return [release for page in json.loads(out) for release in page]
+    releases, page = [], 1
+    while True:
+        with urllib.request.urlopen(_request(f"{API}/releases?per_page=100&page={page}"), timeout=60) as response:
+            batch = json.load(response)
+        if not isinstance(batch, list):
+            raise RuntimeError("unexpected release listing")
+        releases.extend(batch)
+        if len(batch) < 100:
+            return releases
+        page += 1
+
+
+def download_asset(release, name, destination):
+    """Stream one release asset to a file. `release` is the API release object."""
+    asset = next((a for a in release.get("assets", []) if a["name"] == name), None)
+    if asset is None:
+        raise RuntimeError(f"{release.get('tag_name')} has no asset {name}")
+    request = _request(asset["url"])
+    request.add_header("Accept", "application/octet-stream")
+    with urllib.request.urlopen(request, timeout=120) as response, open(destination, "wb") as out:
+        shutil.copyfileobj(response, out, 1 << 20)
 
 
 def main():
@@ -102,7 +134,8 @@ def main():
                         help="drop a delta larger than this fraction of the full file")
     args = parser.parse_args()
 
-    previous = bases(release_pages(), args.bases)
+    releases = release_pages()
+    previous = bases(releases, args.bases)
     encoder = os.environ.get("HDIFFZ", "hdiffz")
     with tempfile.TemporaryDirectory(prefix="map-delta-") as tmp:
         tmp = Path(tmp)
@@ -124,9 +157,7 @@ def main():
             full_size = target.stat().st_size
             for base in candidates:
                 base_file = tmp / base["name"]
-                subprocess.run(["gh", "release", "download", base["version"],
-                                "--repo", "librescoot/osm-tiles", "--pattern", base["name"],
-                                "--dir", tmp], check=True)
+                download_asset(base["release"], base["name"], base_file)
                 if base_file.stat().st_size != base["size"] or sha256(base_file) != base["digest"][7:]:
                     raise RuntimeError(f"base verification failed: {base['version']}/{base['name']}")
                 conn = __import__("sqlite3").connect(f"file:{base_file}?mode=ro", uri=True)

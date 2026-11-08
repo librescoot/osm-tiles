@@ -52,6 +52,24 @@ class TilemakerPinningTest(unittest.TestCase):
                        if step.get("name") == "Publish release")
         self.assertIn("deltas/**/*.hdelta", publish["with"]["files"])
 
+    def test_a_run_can_reuse_the_tiles_of_an_earlier_run(self):
+        jobs = WORKFLOW["jobs"]
+        on = WORKFLOW.get("on") or WORKFLOW.get(True)
+        self.assertIn("reuse_run_id", on["workflow_dispatch"]["inputs"])
+        for name in ("prepare_tilemaker", "prepare_austria", "prepare_switzerland",
+                     "generate_state_tiles"):
+            self.assertIn("inputs.reuse_run_id == ''", jobs[name]["if"], name)
+        # Deltas and the release still run when the build was skipped on purpose,
+        # and take their artifacts from the reused run.
+        for name in ("create_deltas", "release"):
+            self.assertIn("inputs.reuse_run_id != ''", jobs[name]["if"], name)
+            self.assertIn("skipped", jobs[name]["if"], name)
+            for step in jobs[name]["steps"]:
+                if step.get("uses", "").startswith("actions/download-artifact") and \
+                        str(step["with"].get("name", step["with"].get("pattern", ""))).startswith("tiles_"):
+                    self.assertEqual(step["with"]["run-id"], "${{ inputs.reuse_run_id || github.run_id }}")
+                    self.assertIn("github-token", step["with"])
+
     def test_only_main_publishes(self):
         release = WORKFLOW["jobs"]["release"]
         self.assertIn("github.ref == 'refs/heads/main'", release["if"])

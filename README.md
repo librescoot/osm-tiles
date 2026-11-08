@@ -154,6 +154,12 @@ vehicle can update from any version that still has one, and falls back to the
 full file otherwise. The canonical format is also implemented on the dashboard;
 `tools/canonical-mbtiles.py` is the reference for it.
 
+To publish from tiles that an earlier run already built and verified, start the
+workflow with `reuse_run_id` set to that run's ID (and the same regions). The
+tile build is skipped; deltas are built and the release is published from that
+run's artifacts. This recovers from a failure in the delta or release step
+without rebuilding every region.
+
 A branch run stops at workflow artifacts: it builds and verifies the tiles but does not create a release, so a generator change can be tried on a scooter without moving the public per-region index. `tools/verify-mbtiles.py` opens every file read-only, checks SQLite integrity, metadata, every tile's gzip stream, a sample of decoded vector tiles and the geocoding tables, and fails the region job on any problem.
 
 ## Technical Details

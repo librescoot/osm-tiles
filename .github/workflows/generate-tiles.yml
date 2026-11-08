@@ -13,6 +13,11 @@ on:
         required: true
         type: string
         default: all
+      reuse_run_id:
+        description: "Optional run ID whose tiles_* artifacts to reuse: skips the tile build and only builds deltas and publishes. Use with regions=all (or the same set)."
+        required: false
+        type: string
+        default: ''
 
 jobs:
   select_regions:
@@ -52,7 +57,7 @@ jobs:
 
   prepare_austria:
     needs: select_regions
-    if: needs.select_regions.outputs.needs_austria == 'true'
+    if: needs.select_regions.outputs.needs_austria == 'true' && inputs.reuse_run_id == ''
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
@@ -88,7 +93,7 @@ jobs:
 
   prepare_switzerland:
     needs: select_regions
-    if: needs.select_regions.outputs.needs_switzerland == 'true'
+    if: needs.select_regions.outputs.needs_switzerland == 'true' && inputs.reuse_run_id == ''
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
@@ -123,6 +128,7 @@ jobs:
   # Building once and passing the image to the region jobs keeps 25 matrix jobs
   # from compiling the same source and guarantees they all use identical bytes.
   prepare_tilemaker:
+    if: inputs.reuse_run_id == ''
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
@@ -156,7 +162,7 @@ jobs:
   generate_state_tiles:
     needs: [select_regions, prepare_tilemaker, prepare_austria, prepare_switzerland]
     if: >-
-      always() && needs.select_regions.result == 'success' &&
+      always() && inputs.reuse_run_id == '' && needs.select_regions.result == 'success' &&
       needs.prepare_tilemaker.result == 'success' &&
       (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false')) &&
       (needs.prepare_switzerland.result == 'success' || (needs.prepare_switzerland.result == 'skipped' && needs.select_regions.outputs.needs_switzerland == 'false'))
@@ -279,7 +285,10 @@ jobs:
   # to change the bound; the default is 4.
   create_deltas:
     needs: [select_regions, generate_state_tiles]
-    if: needs.generate_state_tiles.result == 'success'
+    if: >-
+      always() && needs.select_regions.result == 'success' &&
+      (needs.generate_state_tiles.result == 'success' ||
+       (inputs.reuse_run_id != '' && needs.generate_state_tiles.result == 'skipped'))
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -294,6 +303,8 @@ jobs:
         with:
           name: tiles_${{ matrix.state.name }}
           path: artifacts/${{ matrix.state.name }}
+          run-id: ${{ inputs.reuse_run_id || github.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Install HDiffPatch encoder
         run: |
@@ -332,7 +343,10 @@ jobs:
   release:
     needs: [select_regions, generate_state_tiles, create_deltas]
     runs-on: self-hosted
-    if: always() && github.ref == 'refs/heads/main' && needs.generate_state_tiles.result == 'success' &&
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      (needs.generate_state_tiles.result == 'success' ||
+       (inputs.reuse_run_id != '' && needs.generate_state_tiles.result == 'skipped')) &&
       (needs.create_deltas.result == 'success' || needs.create_deltas.result == 'skipped')
     steps:
       - name: Download all tile artifacts
@@ -340,6 +354,8 @@ jobs:
         with:
           path: artifacts
           pattern: tiles_*
+          run-id: ${{ inputs.reuse_run_id || github.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Download map deltas
         uses: actions/download-artifact@v8

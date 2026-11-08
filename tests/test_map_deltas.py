@@ -42,6 +42,35 @@ class MapDeltaTest(unittest.TestCase):
         self.assertEqual([entry["digest"] for entry in picked],
                          ["sha256:" + b, "sha256:" + a])
 
+    def test_runs_without_the_gh_cli(self):
+        # The self-hosted runners do not have gh; nothing may shell out to it.
+        source = (ROOT / "tools/create-map-deltas.py").read_text()
+        self.assertNotIn('"gh"', source)
+        self.assertNotIn("'gh'", source)
+
+    def test_download_picks_the_named_asset_by_api_url(self):
+        release = {"tag_name": "tiles-1", "assets": [
+            {"name": "other.mbtiles", "url": "https://api.invalid/assets/1"},
+            {"name": "tiles_bremen.mbtiles", "url": "https://api.invalid/assets/2"}]}
+        seen = []
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n=-1):
+                return b"" if seen.append("read") or len(seen) > 1 else b"bytes"
+
+        def opener(request, timeout=0):
+            seen.append(request.full_url)
+            self.assertEqual(request.get_header("Accept"), "application/octet-stream")
+            return Response()
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(mod.urllib.request, "urlopen", opener):
+            mod.download_asset(release, "tiles_bremen.mbtiles", Path(tmp) / "x")
+        self.assertEqual(seen[0], "https://api.invalid/assets/2")
+        with self.assertRaises(RuntimeError):
+            mod.download_asset(release, "missing.mbtiles", "/dev/null")
+
     def test_container_round_trips(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "x.hdelta"
@@ -76,16 +105,13 @@ class MapDeltaTest(unittest.TestCase):
             releases = [[release("tiles-20261001T000000Z", "2026-10-01",
                                  asset("tiles_bremen.mbtiles", digest,
                                        base.stat().st_size))]]
-            real_run = mod.subprocess.run
 
-            def run(args, **kwargs):
-                if args[:3] == ["gh", "release", "download"]:
-                    shutil.copyfile(base, Path(args[-1]) / "tiles_bremen.mbtiles")
-                    return None
-                return real_run(args, **kwargs)
+            def fetch(release, name, destination):
+                self.assertEqual(release["tag_name"], "tiles-20261001T000000Z")
+                shutil.copyfile(base, destination)
 
             with mock.patch.object(mod, "release_pages", return_value=releases[0]), \
-                 mock.patch.object(mod.subprocess, "run", side_effect=run), \
+                 mock.patch.object(mod, "download_asset", side_effect=fetch), \
                  mock.patch.object(mod.sys, "argv",
                                    ["generator", str(root / "artifacts"), "--bases", "1"]), \
                  mock.patch.dict(os.environ, {"PATH": str(Path(encoder).parent) + ":" + os.environ["PATH"]}):

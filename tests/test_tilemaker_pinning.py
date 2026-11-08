@@ -32,14 +32,34 @@ class TilemakerPinningTest(unittest.TestCase):
         self.assertLess(steps.index("Verify tiles for ${{ matrix.state.name }}"),
                         steps.index("Upload tiles for ${{ matrix.state.name }}"))
 
-    def test_deltas_are_built_and_kept_with_their_release(self):
+    def test_deltas_are_built_per_region_right_after_the_tiles(self):
         jobs = WORKFLOW["jobs"]
-        self.assertIn("create_deltas", jobs)
+        steps = [s.get("name", "") for s in jobs["generate_state_tiles"]["steps"]]
+        delta = next(i for i, n in enumerate(steps) if n.startswith("Build map deltas for"))
+        # Each region runs the whole sequence itself: its deltas start as soon as
+        # its own tiles are verified, without waiting for the other regions.
+        self.assertGreater(delta, steps.index("Verify tiles for ${{ matrix.state.name }}"))
+        self.assertGreater(delta, next(i for i, n in enumerate(steps) if n.startswith("Keep tiles for")))
+        self.assertNotIn("generate_state_tiles", jobs["generate_state_tiles"].get("needs", []))
+        step = jobs["generate_state_tiles"]["steps"][delta]
+        self.assertEqual(step["uses"], "./.github/actions/build-map-deltas")
+        self.assertEqual(jobs["generate_state_tiles"]["steps"][0].get("uses"), "actions/checkout@v7")
+        action = (ROOT / ".github/actions/build-map-deltas/action.yml").read_text()
+        self.assertIn("tools/create-map-deltas.py", action)
+        self.assertIn("--cache-dir", action)
+        self.assertIn("map-deltas-$REGION", action)  # a directory per region, never a shared one
+
+    def test_the_release_waits_for_every_region_and_its_deltas(self):
+        jobs = WORKFLOW["jobs"]
         self.assertEqual(jobs["release"]["needs"],
                          ["select_regions", "generate_state_tiles", "create_deltas"])
-        runs = "\n".join(step.get("run", "") for step in jobs["create_deltas"]["steps"])
-        self.assertIn("tools/create-map-deltas.py", runs)
-        self.assertIn("--bases 2", runs)
+        publish = next(s for s in jobs["release"]["steps"] if s.get("name") == "Publish release")
+        self.assertIn("deltas/**/*.hdelta", publish["with"]["files"])
+
+    def test_the_recovery_path_builds_deltas_from_reused_tiles(self):
+        jobs = WORKFLOW["jobs"]
+        self.assertIn("inputs.reuse_run_id != ''", jobs["create_deltas"]["if"])
+        self.assertIn("'skipped'", jobs["create_deltas"]["if"])
         # One region per job, so no runner holds every artifact at once, and the
         # parallelism is a repository variable rather than a constant.
         strategy = jobs["create_deltas"]["strategy"]
@@ -67,7 +87,10 @@ class TilemakerPinningTest(unittest.TestCase):
             for step in jobs[name]["steps"]:
                 if step.get("uses", "").startswith("actions/download-artifact") and \
                         str(step["with"].get("name", step["with"].get("pattern", ""))).startswith("tiles_"):
-                    self.assertEqual(step["with"]["run-id"], "${{ inputs.reuse_run_id || github.run_id }}")
+                    # The delta job only exists for a reuse; the release serves both.
+                    expected = ("${{ inputs.reuse_run_id }}" if name == "create_deltas"
+                                else "${{ inputs.reuse_run_id || github.run_id }}")
+                    self.assertEqual(step["with"]["run-id"], expected)
                     self.assertIn("github-token", step["with"])
 
     def test_tiles_are_handed_over_on_the_runner_before_downloading(self):
@@ -85,8 +108,8 @@ class TilemakerPinningTest(unittest.TestCase):
                             and str(s["with"].get("name", s["with"].get("pattern", ""))).startswith("tiles_"))
             self.assertLess(steps.index(local), steps.index(fallback), job)
             self.assertIn("steps.local.outputs.found != 'true'", fallback["if"], job)
-        deltas = next(s for s in jobs["create_deltas"]["steps"] if s.get("name", "").startswith("Build deltas"))
-        self.assertIn("--cache-dir", deltas["run"])
+        recovery = next(s for s in jobs["create_deltas"]["steps"] if s.get("name", "").startswith("Build map deltas"))
+        self.assertEqual(recovery["uses"], "./.github/actions/build-map-deltas")
         steps = [s.get("name", "") for s in jobs["release"]["steps"]]
         # Published files become the next run's delta bases, only after publishing.
         self.assertLess(steps.index("Publish release"), steps.index("Keep the published files as delta bases"))

@@ -275,6 +275,17 @@ jobs:
           tools/tile-cache.sh store "${{ github.run_id }}" "${{ matrix.state.name }}" \
             "/tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles"
 
+      # The whole sequence runs per region, so a finished region starts its
+      # deltas while the others are still building.
+      - name: Build map deltas for ${{ matrix.state.name }}
+        uses: ./.github/actions/build-map-deltas
+        with:
+          cache-dir: ${{ vars.TILE_CACHE_DIR }}
+          region: ${{ matrix.state.name }}
+          tiles: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
+          bases: ${{ vars.MAP_DELTA_BASES || '2' }}
+          github-token: ${{ github.token }}
+
       - name: Upload tiles for ${{ matrix.state.name }}
         uses: actions/upload-artifact@v7
         with:
@@ -288,17 +299,16 @@ jobs:
           rm -rf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }} \
             /tmp/swiss-canton-pbf-${{ github.run_id }}-${{ github.run_attempt }}
 
-  # One job per region: each downloads only its own tile artifact and the base
-  # releases it patches against, then frees its disk. The matrix keeps the whole
-  # tileset from being on one runner at once (about 5 GB) and bounds how many
-  # regions work in parallel. Set the repository variable MAP_DELTA_CONCURRENCY
-  # to change the bound; the default is 4.
+  # Recovery path only: a run started with reuse_run_id skips the tile build, so
+  # this builds the deltas from the earlier run's tiles, one job per region. A
+  # normal run builds its deltas inside generate_state_tiles, per region, right
+  # after each region is verified. MAP_DELTA_CONCURRENCY bounds the parallelism
+  # here (default 4).
   create_deltas:
     needs: [select_regions, generate_state_tiles]
     if: >-
-      always() && needs.select_regions.result == 'success' &&
-      (needs.generate_state_tiles.result == 'success' ||
-       (inputs.reuse_run_id != '' && needs.generate_state_tiles.result == 'skipped'))
+      always() && inputs.reuse_run_id != '' && needs.select_regions.result == 'success' &&
+      needs.generate_state_tiles.result == 'skipped'
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -313,7 +323,7 @@ jobs:
         env:
           TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
         run: |
-          if tools/tile-cache.sh fetch "${{ inputs.reuse_run_id || github.run_id }}" \
+          if tools/tile-cache.sh fetch "${{ inputs.reuse_run_id }}" \
                "${{ matrix.state.name }}" "artifacts/${{ matrix.state.name }}"; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "Using the tiles already on this runner"
@@ -327,39 +337,17 @@ jobs:
         with:
           name: tiles_${{ matrix.state.name }}
           path: artifacts/${{ matrix.state.name }}
-          run-id: ${{ inputs.reuse_run_id || github.run_id }}
+          run-id: ${{ inputs.reuse_run_id }}
           github-token: ${{ github.token }}
 
-      - name: Install HDiffPatch encoder
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --location --retry 3 \
-            -o "$RUNNER_TEMP/hdiffpatch.zip" \
-            https://github.com/sisong/HDiffPatch/releases/download/v5.1.3/hdiffpatch_v5.1.3_bin_linux64.zip
-          echo "628963bf2ee9108a97260fa5eef44acd9ec94369b76090a957c9182b3abbb558  $RUNNER_TEMP/hdiffpatch.zip" | sha256sum -c -
-          unzip -j -o "$RUNNER_TEMP/hdiffpatch.zip" 'linux64/hdiffz' -d "$RUNNER_TEMP/hdiff"
-          chmod 0755 "$RUNNER_TEMP/hdiff/hdiffz"
-          echo "$RUNNER_TEMP/hdiff" >> "$GITHUB_PATH"
-
-      - name: Build deltas for ${{ matrix.state.name }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
-        run: |
-          set -euo pipefail
-          # Published bases are kept between runs, so only the release that is
-          # new since last time is downloaded.
-          python3 tools/create-map-deltas.py artifacts --bases 2 \
-            --cache-dir "${TILE_CACHE_DIR:-$HOME/.cache/librescoot-tiles}/bases"
-          find artifacts -name '*.hdelta' -exec ls -lh {} + || true
-
-      - name: Upload deltas for ${{ matrix.state.name }}
-        uses: actions/upload-artifact@v7
+      - name: Build map deltas for ${{ matrix.state.name }}
+        uses: ./.github/actions/build-map-deltas
         with:
-          name: tiles-delta-${{ matrix.state.name }}
-          path: artifacts/**/*.hdelta
-          if-no-files-found: ignore
-          compression-level: 0
+          cache-dir: ${{ vars.TILE_CACHE_DIR }}
+          region: ${{ matrix.state.name }}
+          tiles: artifacts/${{ matrix.state.name }}/tiles_${{ matrix.state.name }}.mbtiles
+          bases: ${{ vars.MAP_DELTA_BASES || '2' }}
+          github-token: ${{ github.token }}
 
       - name: Free runner disk space
         if: always()

@@ -1,0 +1,74 @@
+name: Build map deltas for one region
+description: >-
+  Patches one verified region file against the recent published releases and
+  uploads the resulting .hdelta files. Used right after a region is built, and
+  by the recovery path that reuses an earlier run's tiles.
+
+inputs:
+  region:
+    description: Region ID, e.g. bremen
+    required: true
+  tiles:
+    description: Path to the verified tiles_<region>.mbtiles
+    required: true
+  bases:
+    description: How many recent published releases to build deltas against
+    required: false
+    default: '2'
+  cache-dir:
+    description: Runner directory for kept tiles; empty means $HOME/.cache/librescoot-tiles
+    required: false
+    default: ''
+  github-token:
+    description: Token for listing and downloading published releases
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install HDiffPatch encoder
+      shell: bash
+      run: |
+        set -euo pipefail
+        curl --fail --silent --show-error --location --retry 3 \
+          -o "$RUNNER_TEMP/hdiffpatch.zip" \
+          https://github.com/sisong/HDiffPatch/releases/download/v5.1.3/hdiffpatch_v5.1.3_bin_linux64.zip
+        echo "628963bf2ee9108a97260fa5eef44acd9ec94369b76090a957c9182b3abbb558  $RUNNER_TEMP/hdiffpatch.zip" | sha256sum -c -
+        unzip -j -o "$RUNNER_TEMP/hdiffpatch.zip" 'linux64/hdiffz' -d "$RUNNER_TEMP/hdiff"
+        chmod 0755 "$RUNNER_TEMP/hdiff/hdiffz"
+        echo "$RUNNER_TEMP/hdiff" >> "$GITHUB_PATH"
+
+    - name: Build deltas for ${{ inputs.region }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TILE_CACHE_DIR: ${{ inputs.cache-dir }}
+        REGION: ${{ inputs.region }}
+        TILES: ${{ inputs.tiles }}
+        BASES: ${{ inputs.bases }}
+      run: |
+        set -euo pipefail
+        # A directory of its own: regions build side by side on one runner and
+        # the generator patches every tiles_*.mbtiles it finds in it.
+        work="$RUNNER_TEMP/map-deltas-$REGION"
+        rm -rf "$work"
+        mkdir -p "$work"
+        ln -f "$TILES" "$work/tiles_$REGION.mbtiles" 2>/dev/null || cp "$TILES" "$work/tiles_$REGION.mbtiles"
+        # Published bases are kept between runs, so only a release that is new
+        # since last time is downloaded.
+        python3 tools/create-map-deltas.py "$work" --bases "$BASES" \
+          --cache-dir "${TILE_CACHE_DIR:-$HOME/.cache/librescoot-tiles}/bases"
+        find "$work" -name '*.hdelta' -exec ls -lh {} + || true
+
+    - name: Upload deltas for ${{ inputs.region }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: tiles-delta-${{ inputs.region }}
+        path: ${{ runner.temp }}/map-deltas-${{ inputs.region }}/*.hdelta
+        if-no-files-found: ignore
+        compression-level: 0
+
+    - name: Clean up deltas for ${{ inputs.region }}
+      if: always()
+      shell: bash
+      run: rm -rf "$RUNNER_TEMP/map-deltas-${{ inputs.region }}"

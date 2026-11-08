@@ -145,7 +145,7 @@ PBF downloads require `curl` and GNU `date`. They log errors and retry up to thr
 
 Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Enter `all` or comma-separated region IDs such as `alsace,islas-baleares,graz,vienna`. A successful build on `main` publishes a timestamped release with only the selected regions; builds on other branches leave workflow artifacts. Monthly runs build the full list in `.github/regions.json`.
 
-Each release also carries map deltas for the region's recent published versions.
+Each release also carries map deltas for the region's recent published versions. They are built in one job per region, each downloading only its own tiles and the base releases it patches against; the repository variable `MAP_DELTA_CONCURRENCY` sets how many run at once (default 4).
 The patch is an HDiffPatch stream over `tools/canonical-mbtiles.py`'s canonical
 form (schema, rows in a fixed order, decompressed tile payloads), wrapped in a
 small header with the base and target canonical hashes. Deltas refer to

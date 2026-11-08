@@ -40,6 +40,14 @@ class TilemakerPinningTest(unittest.TestCase):
         runs = "\n".join(step.get("run", "") for step in jobs["create_deltas"]["steps"])
         self.assertIn("tools/create-map-deltas.py", runs)
         self.assertIn("--bases 2", runs)
+        # One region per job, so no runner holds every artifact at once, and the
+        # parallelism is a repository variable rather than a constant.
+        strategy = jobs["create_deltas"]["strategy"]
+        self.assertIn("select_regions.outputs.regions", strategy["matrix"]["state"])
+        self.assertIn("MAP_DELTA_CONCURRENCY", strategy["max-parallel"])
+        downloads = [step["with"] for step in jobs["create_deltas"]["steps"]
+                     if step.get("uses", "").startswith("actions/download-artifact")]
+        self.assertEqual([d["name"] for d in downloads], ["tiles_${{ matrix.state.name }}"])
         publish = next(step for step in jobs["release"]["steps"]
                        if step.get("name") == "Publish release")
         self.assertIn("deltas/**/*.hdelta", publish["with"]["files"])

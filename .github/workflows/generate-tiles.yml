@@ -13,11 +13,6 @@ on:
         required: true
         type: string
         default: all
-      reuse_run_id:
-        description: "Optional run ID whose tiles_* artifacts to reuse: skips the tile build and only builds deltas and publishes. Use with regions=all (or the same set)."
-        required: false
-        type: string
-        default: ''
 
 jobs:
   select_regions:
@@ -57,7 +52,7 @@ jobs:
 
   prepare_austria:
     needs: select_regions
-    if: needs.select_regions.outputs.needs_austria == 'true' && inputs.reuse_run_id == ''
+    if: needs.select_regions.outputs.needs_austria == 'true'
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
@@ -93,7 +88,7 @@ jobs:
 
   prepare_switzerland:
     needs: select_regions
-    if: needs.select_regions.outputs.needs_switzerland == 'true' && inputs.reuse_run_id == ''
+    if: needs.select_regions.outputs.needs_switzerland == 'true'
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
@@ -128,7 +123,6 @@ jobs:
   # Building once and passing the image to the region jobs keeps 25 matrix jobs
   # from compiling the same source and guarantees they all use identical bytes.
   prepare_tilemaker:
-    if: inputs.reuse_run_id == ''
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
@@ -159,10 +153,48 @@ jobs:
         if: always()
         run: rm -rf "${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}"
 
+  # Main runs publish. The release is opened as a draft up front, every region
+  # job uploads its own files into it from whichever runner it ran on, and the
+  # last job checks it is complete and publishes it. Nothing is carried between
+  # runners: moving 5 GB of workflow artifacts onto one machine was slow and
+  # failed. A branch run has no draft; it keeps workflow artifacts for review
+  # and never touches the public per-region index.
+  open_release:
+    needs: select_regions
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
+      tag: ${{ steps.draft.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Publishes to a fresh tag every run. The old scheme rewrote "latest" in
+      # place, so a download URL served different bytes depending on when it was
+      # fetched: a vehicle could take a digest from the manifest and receive
+      # content that no longer matched it. A tag that is never reused makes each
+      # asset URL immutable, so a download that starts against one build stays
+      # on that build.
+      - name: Open a draft release
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="tiles-$(date -u +%Y%m%dT%H%M%SZ)"
+          month="$(date '+%B %Y')"
+          release=$(python3 tools/release-assets.py create --tag "$tag" \
+            --name "Custom Shortbread Tiles - $month" \
+            --body "Generated from ${{ github.sha }}." --sha "${{ github.sha }}")
+          echo "$release"
+          echo "id=$(echo "$release" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   generate_state_tiles:
-    needs: [select_regions, prepare_tilemaker, prepare_austria, prepare_switzerland]
+    needs: [select_regions, open_release, prepare_tilemaker, prepare_austria, prepare_switzerland]
     if: >-
-      always() && inputs.reuse_run_id == '' && needs.select_regions.result == 'success' &&
+      always() && needs.select_regions.result == 'success' &&
+      (needs.open_release.result == 'success' || needs.open_release.result == 'skipped') &&
       needs.prepare_tilemaker.result == 'success' &&
       (needs.prepare_austria.result == 'success' || (needs.prepare_austria.result == 'skipped' && needs.select_regions.outputs.needs_austria == 'false')) &&
       (needs.prepare_switzerland.result == 'success' || (needs.prepare_switzerland.result == 'skipped' && needs.select_regions.outputs.needs_switzerland == 'false'))
@@ -265,28 +297,21 @@ jobs:
           python3 tools/verify-mbtiles.py \
             /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
-      # The delta and release jobs run on this same runner, so they take the
-      # file from disk instead of downloading it again; the artifact below is
-      # only the fallback (and what a branch run keeps for review).
-      - name: Keep tiles for ${{ matrix.state.name }} on the runner
-        env:
-          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
-        run: |
-          tools/tile-cache.sh store "${{ github.run_id }}" "${{ matrix.state.name }}" \
-            "/tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles"
-
-      # The whole sequence runs per region, so a finished region starts its
-      # deltas while the others are still building.
-      - name: Build map deltas for ${{ matrix.state.name }}
+      # The whole sequence runs per region on one runner: deltas against the
+      # recent releases, then the tiles and deltas straight into the draft.
+      - name: Build map deltas and upload ${{ matrix.state.name }}
         uses: ./.github/actions/build-map-deltas
         with:
           cache-dir: ${{ vars.TILE_CACHE_DIR }}
           region: ${{ matrix.state.name }}
           tiles: /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
           bases: ${{ vars.MAP_DELTA_BASES || '2' }}
+          release-id: ${{ needs.open_release.outputs.id }}
+          release-tag: ${{ needs.open_release.outputs.tag }}
           github-token: ${{ github.token }}
 
-      - name: Upload tiles for ${{ matrix.state.name }}
+      - name: Keep tiles for ${{ matrix.state.name }} as an artifact
+        if: github.ref != 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
           name: tiles_${{ matrix.state.name }}
@@ -299,149 +324,26 @@ jobs:
           rm -rf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }} \
             /tmp/swiss-canton-pbf-${{ github.run_id }}-${{ github.run_attempt }}
 
-  # Recovery path only: a run started with reuse_run_id skips the tile build, so
-  # this builds the deltas from the earlier run's tiles, one job per region. A
-  # normal run builds its deltas inside generate_state_tiles, per region, right
-  # after each region is verified. MAP_DELTA_CONCURRENCY bounds the parallelism
-  # here (default 4).
-  create_deltas:
-    needs: [select_regions, generate_state_tiles]
-    if: >-
-      always() && inputs.reuse_run_id != '' && needs.select_regions.result == 'success' &&
-      needs.generate_state_tiles.result == 'skipped'
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      max-parallel: ${{ fromJSON(vars.MAP_DELTA_CONCURRENCY || '4') }}
-      matrix:
-        state: ${{ fromJSON(needs.select_regions.outputs.regions) }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Look for ${{ matrix.state.name }} tiles on the runner
-        id: local
-        env:
-          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
-        run: |
-          if tools/tile-cache.sh fetch "${{ inputs.reuse_run_id }}" \
-               "${{ matrix.state.name }}" "artifacts/${{ matrix.state.name }}"; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "Using the tiles already on this runner"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download tiles for ${{ matrix.state.name }}
-        if: steps.local.outputs.found != 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: tiles_${{ matrix.state.name }}
-          path: artifacts/${{ matrix.state.name }}
-          run-id: ${{ inputs.reuse_run_id }}
-          github-token: ${{ github.token }}
-
-      - name: Build map deltas for ${{ matrix.state.name }}
-        uses: ./.github/actions/build-map-deltas
-        with:
-          cache-dir: ${{ vars.TILE_CACHE_DIR }}
-          region: ${{ matrix.state.name }}
-          tiles: artifacts/${{ matrix.state.name }}/tiles_${{ matrix.state.name }}.mbtiles
-          bases: ${{ vars.MAP_DELTA_BASES || '2' }}
-          github-token: ${{ github.token }}
-
-      - name: Free runner disk space
-        if: always()
-        run: rm -rf artifacts
-
-  # Only main publishes: a branch run produces Actions artifacts for review, so a
-  # generator change can be inspected on a scooter without touching the
-  # public per-region index.
-  release:
-    needs: [select_regions, generate_state_tiles, create_deltas]
-    runs-on: self-hosted
+  publish_release:
+    needs: [select_regions, open_release, generate_state_tiles]
     if: >-
       always() && github.ref == 'refs/heads/main' &&
-      (needs.generate_state_tiles.result == 'success' ||
-       (inputs.reuse_run_id != '' && needs.generate_state_tiles.result == 'skipped')) &&
-      (needs.create_deltas.result == 'success' || needs.create_deltas.result == 'skipped')
+      needs.open_release.result == 'success' && needs.generate_state_tiles.result == 'success'
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
-      - name: Look for the tiles on the runner
-        id: local
+      # Refuses to publish unless every selected region has verified tiles with
+      # a digest and every delta belongs to one of them.
+      - name: Publish the release
         env:
-          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
-        run: |
-          if tools/tile-cache.sh fetch-all "${{ inputs.reuse_run_id || github.run_id }}" \
-               "${{ needs.select_regions.outputs.count }}" artifacts; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "Using the tiles already on this runner"
-          else
-            rm -rf artifacts
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download all tile artifacts
-        if: steps.local.outputs.found != 'true'
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          pattern: tiles_*
-          run-id: ${{ inputs.reuse_run_id || github.run_id }}
-          github-token: ${{ github.token }}
-
-      - name: Download map deltas
-        uses: actions/download-artifact@v8
-        with:
-          path: deltas
-          pattern: tiles-delta-*
-          merge-multiple: true
-        continue-on-error: true
-
-      - name: List all artifacts
-        run: |
-          echo "Listing all downloaded tile artifacts:"
-          find artifacts -name "*.mbtiles" -type f -exec ls -lh {} \;
-
-      - name: Set release month variable
-        id: date
-        run: echo "month=$(date '+%B %Y')" >> $GITHUB_OUTPUT
-
-      # Publishes to a fresh tag every run. The old scheme rewrote "latest" in
-      # place, so a download URL served different bytes depending on when it was
-      # fetched: a vehicle could take a digest from the manifest and receive
-      # content that no longer matched it. A tag that is never reused makes each
-      # asset URL immutable, so a download that starts against one build stays
-      # on that build.
-      - name: Name the release
-        id: publish
+          GH_TOKEN: ${{ github.token }}
+          REGIONS: ${{ needs.select_regions.outputs.regions }}
         run: |
           set -euo pipefail
-          tag="tiles-$(date -u +%Y%m%dT%H%M%SZ)"
-          count=$(find artifacts -name '*.mbtiles' -type f | wc -l)
-          if [ "$count" -ne "${{ needs.select_regions.outputs.count }}" ]; then
-            echo "expected ${{ needs.select_regions.outputs.count }} tile artifacts, got $count" >&2
-            exit 1
-          fi
-          echo "publishing $count assets as $tag"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-      # A JavaScript action rather than the gh CLI: gh is not installed on the
-      # self-hosted runners, and this is the action the firmware build already
-      # uses on them.
-      - name: Publish release
-        uses: softprops/action-gh-release@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ steps.publish.outputs.tag }}
-          name: "Custom Shortbread Tiles - ${{ steps.date.outputs.month }}"
-          body: "Generated from ${{ github.sha }}."
-          prerelease: false
-          files: |
-            artifacts/**/*.mbtiles
-            deltas/**/*.hdelta
-          # Deltas are optional: a region without a published base has none.
-          fail_on_unmatched_files: false
+          names=$(python3 -c 'import json,os; print(",".join(r["name"] for r in json.loads(os.environ["REGIONS"])))')
+          python3 tools/release-assets.py publish \
+            --release-id "${{ needs.open_release.outputs.id }}" --regions "$names"
 
       # Enable after the downloads site serves the per-region index.
       - name: Generate app token for downloads rebuild
@@ -461,19 +363,3 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           repository: librescoot/downloads.librescoot.org
           event-type: releases-changed
-
-      # Once published, the files are the next run's delta bases, so they stay
-      # on the runner as such, and the run's own copy is no longer needed.
-      - name: Keep the published files as delta bases
-        env:
-          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
-        run: |
-          tools/tile-cache.sh adopt "${{ steps.publish.outputs.tag }}" artifacts
-          tools/tile-cache.sh forget "${{ inputs.reuse_run_id || github.run_id }}"
-
-      # Failsafe for runs that never published (branch runs, abandoned retries).
-      - name: Drop stale tile runs from the runner
-        if: always()
-        env:
-          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
-        run: tools/tile-cache.sh prune 14

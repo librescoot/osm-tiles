@@ -1,8 +1,9 @@
-name: Build map deltas for one region
+name: Build map deltas for one region and hand the files on
 description: >-
-  Patches one verified region file against the recent published releases and
-  uploads the resulting .hdelta files. Used right after a region is built, and
-  by the recovery path that reuses an earlier run's tiles.
+  Patches one verified region file against the recent published releases. On a
+  main run the tiles and deltas are uploaded straight into the draft release
+  from this runner, and the tiles are kept as the next run's delta base. On a
+  branch run the deltas are kept as a workflow artifact instead.
 
 inputs:
   region:
@@ -16,11 +17,19 @@ inputs:
     required: false
     default: '2'
   cache-dir:
-    description: Runner directory for kept tiles; empty means $HOME/.cache/librescoot-tiles
+    description: Runner directory for kept files; empty means $HOME/.cache/librescoot-tiles
+    required: false
+    default: ''
+  release-id:
+    description: Draft release to upload into; empty on a branch run
+    required: false
+    default: ''
+  release-tag:
+    description: Tag of that draft release
     required: false
     default: ''
   github-token:
-    description: Token for listing and downloading published releases
+    description: Token for listing and downloading releases and for the draft upload
     required: true
 
 runs:
@@ -60,7 +69,28 @@ runs:
           --cache-dir "${TILE_CACHE_DIR:-$HOME/.cache/librescoot-tiles}/bases"
         find "$work" -name '*.hdelta' -exec ls -lh {} + || true
 
-    - name: Upload deltas for ${{ inputs.region }}
+    - name: Upload ${{ inputs.region }} to the draft release
+      if: inputs.release-id != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TILE_CACHE_DIR: ${{ inputs.cache-dir }}
+        REGION: ${{ inputs.region }}
+        RELEASE_ID: ${{ inputs.release-id }}
+        RELEASE_TAG: ${{ inputs.release-tag }}
+      run: |
+        set -euo pipefail
+        work="$RUNNER_TEMP/map-deltas-$REGION"
+        shopt -s nullglob
+        # Tiles first, then the deltas that patch towards them.
+        python3 tools/release-assets.py upload --release-id "$RELEASE_ID" \
+          "$work/tiles_$REGION.mbtiles" "$work"/*.hdelta
+        # Once uploaded, this very file is what the release will publish, so it
+        # is also the next run's base: no download for the newest version.
+        tools/tile-cache.sh adopt "$RELEASE_TAG" "$work"
+
+    - name: Keep deltas for ${{ inputs.region }} as an artifact
+      if: inputs.release-id == ''
       uses: actions/upload-artifact@v7
       with:
         name: tiles-delta-${{ inputs.region }}

@@ -145,7 +145,7 @@ PBF downloads require `curl` and GNU `date`. They log errors and retry up to thr
 
 Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Enter `all` or comma-separated region IDs such as `alsace,islas-baleares,graz,vienna`. A successful build on `main` publishes a timestamped release with only the selected regions; builds on other branches leave workflow artifacts. Monthly runs build the full list in `.github/regions.json`.
 
-Each release also carries map deltas for the region's recent published versions. Each region runs the whole sequence in its own job (build, geocoding index, verification, deltas), so a finished region starts its deltas while the others are still building; only the release waits for all of them. `MAP_DELTA_BASES` sets how many earlier releases each region is patched against (default 2). The recovery path (`reuse_run_id`) builds deltas as one job per region too, bounded by `MAP_DELTA_CONCURRENCY` (default 4).
+Each release also carries map deltas for the region's recent published versions. See "Release flow" above for how they are built and published.
 The patch is an HDiffPatch stream over `tools/canonical-mbtiles.py`'s canonical
 form (schema, rows in a fixed order, decompressed tile payloads), wrapped in a
 small header with the base and target canonical hashes. Deltas refer to
@@ -154,24 +154,27 @@ vehicle can update from any version that still has one, and falls back to the
 full file otherwise. The canonical format is also implemented on the dashboard;
 `tools/canonical-mbtiles.py` is the reference for it.
 
-Jobs hand tiles to each other through the runner's own disk
-(`$HOME/.cache/librescoot-tiles`, or the repository variable `TILE_CACHE_DIR`)
-instead of downloading them again: the build job stores each verified region
-with `tools/tile-cache.sh`, and the delta and release jobs take it from there,
-falling back to the workflow artifact only when the runner has no copy. Base
-releases for the deltas are cached the same way by `tools/create-map-deltas.py`,
-verified against the release's own digest before use. After a release is
-published its files simply become the next run's delta bases (moved from the
-run's folder to the base cache), so a monthly run downloads no base at all for
-the newest version and only the older one if it was never cached. A run's own
-tiles are removed once published; a failsafe drops runs older than 14 days that
-never published, such as branch runs.
+## Release flow
 
-To publish from tiles that an earlier run already built and verified, start the
-workflow with `reuse_run_id` set to that run's ID (and the same regions). The
-tile build is skipped; deltas are built and the release is published from that
-run's artifacts. This recovers from a failure in the delta or release step
-without rebuilding every region.
+A run on `main` opens a **draft release** first, then every region runs the whole
+sequence in its own job on whichever runner picks it up: build, geocoding index,
+verification, deltas against the recent releases, and an upload of the tiles and
+deltas straight into the draft. Nothing is moved between runners, which matters
+because they are separate machines and carrying 5 GB of workflow artifacts to one
+of them was slow and unreliable. When every region is done, a last job checks that
+each selected region has verified tiles with a digest, that every delta belongs to
+one of them and that nothing else is in the draft, and only then publishes it
+(`tools/release-assets.py`). An upload is idempotent, so re-running a failed region
+job simply completes the same draft; a draft that never gets published is invisible
+to the downloads site.
+
+Published bases for the deltas are kept on each runner (`$HOME/.cache/librescoot-tiles`,
+or the repository variable `TILE_CACHE_DIR`), keyed by release tag and verified
+against the release's own digest before use. A region's own tiles are filed there
+as soon as they are uploaded, because that very file is what the release publishes
+and so is the next run's base. A runner that has never built a region downloads its
+bases once. `MAP_DELTA_BASES` sets how many earlier releases each region is patched
+against (default 2).
 
 A branch run stops at workflow artifacts: it builds and verifies the tiles but does not create a release, so a generator change can be tried on a scooter without moving the public per-region index. `tools/verify-mbtiles.py` opens every file read-only, checks SQLite integrity, metadata, every tile's gzip stream, a sample of decoded vector tiles and the geocoding tables, and fails the region job on any problem.
 

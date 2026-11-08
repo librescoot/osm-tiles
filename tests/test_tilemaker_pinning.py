@@ -30,102 +30,65 @@ class TilemakerPinningTest(unittest.TestCase):
         self.assertLess(steps.index("Build geocoding index for ${{ matrix.state.name }}"),
                         steps.index("Verify tiles for ${{ matrix.state.name }}"))
         self.assertLess(steps.index("Verify tiles for ${{ matrix.state.name }}"),
-                        steps.index("Upload tiles for ${{ matrix.state.name }}"))
+                        next(i for i, n in enumerate(steps) if n.startswith("Build map deltas and upload")))
 
     def test_deltas_are_built_per_region_right_after_the_tiles(self):
         jobs = WORKFLOW["jobs"]
         steps = [s.get("name", "") for s in jobs["generate_state_tiles"]["steps"]]
-        delta = next(i for i, n in enumerate(steps) if n.startswith("Build map deltas for"))
+        delta = next(i for i, n in enumerate(steps) if n.startswith("Build map deltas"))
         # Each region runs the whole sequence itself: its deltas start as soon as
         # its own tiles are verified, without waiting for the other regions.
         self.assertGreater(delta, steps.index("Verify tiles for ${{ matrix.state.name }}"))
-        self.assertGreater(delta, next(i for i, n in enumerate(steps) if n.startswith("Keep tiles for")))
-        self.assertNotIn("generate_state_tiles", jobs["generate_state_tiles"].get("needs", []))
         step = jobs["generate_state_tiles"]["steps"][delta]
         self.assertEqual(step["uses"], "./.github/actions/build-map-deltas")
         self.assertEqual(jobs["generate_state_tiles"]["steps"][0].get("uses"), "actions/checkout@v7")
+        self.assertNotIn("generate_state_tiles", jobs["generate_state_tiles"]["needs"])
         action = (ROOT / ".github/actions/build-map-deltas/action.yml").read_text()
         self.assertIn("tools/create-map-deltas.py", action)
         self.assertIn("--cache-dir", action)
         self.assertIn("map-deltas-$REGION", action)  # a directory per region, never a shared one
 
-    def test_the_release_waits_for_every_region_and_its_deltas(self):
+    def test_files_go_straight_from_each_runner_into_a_draft_release(self):
         jobs = WORKFLOW["jobs"]
-        self.assertEqual(jobs["release"]["needs"],
-                         ["select_regions", "generate_state_tiles", "create_deltas"])
-        publish = next(s for s in jobs["release"]["steps"] if s.get("name") == "Publish release")
-        self.assertIn("deltas/**/*.hdelta", publish["with"]["files"])
+        # Runners are separate machines: nothing is carried between them, so no
+        # job downloads the tiles that other jobs built. Only the inputs a region
+        # needs (the generator image and the clipped extracts) are passed on.
+        for name, job in jobs.items():
+            for step in job["steps"]:
+                if step.get("uses", "").startswith("actions/download-artifact"):
+                    self.assertIn(step["with"].get("name"),
+                                  ("tilemaker-image", "austrian-city-pbfs", "swiss-canton-pbf"), name)
+        self.assertIn("generate_state_tiles", jobs["publish_release"]["needs"])
+        self.assertIn("open_release", jobs["generate_state_tiles"]["needs"])
+        action = (ROOT / ".github/actions/build-map-deltas/action.yml").read_text()
+        self.assertIn("tools/release-assets.py upload", action)
+        self.assertIn("tools/tile-cache.sh adopt", action)
+        # The shared draft is opened once, before any region starts.
+        draft = next(s for s in jobs["open_release"]["steps"] if s.get("id") == "draft")
+        self.assertIn("release-assets.py create", draft["run"])
+        self.assertEqual(jobs["open_release"]["outputs"]["id"], "${{ steps.draft.outputs.id }}")
+        region = next(s for s in jobs["generate_state_tiles"]["steps"] if s.get("name", "").startswith("Build map deltas"))
+        self.assertEqual(region["with"]["release-id"], "${{ needs.open_release.outputs.id }}")
 
-    def test_the_recovery_path_builds_deltas_from_reused_tiles(self):
+    def test_the_release_is_published_only_when_complete_and_only_from_main(self):
         jobs = WORKFLOW["jobs"]
-        self.assertIn("inputs.reuse_run_id != ''", jobs["create_deltas"]["if"])
-        self.assertIn("'skipped'", jobs["create_deltas"]["if"])
-        # One region per job, so no runner holds every artifact at once, and the
-        # parallelism is a repository variable rather than a constant.
-        strategy = jobs["create_deltas"]["strategy"]
-        self.assertIn("select_regions.outputs.regions", strategy["matrix"]["state"])
-        self.assertIn("MAP_DELTA_CONCURRENCY", strategy["max-parallel"])
-        downloads = [step["with"] for step in jobs["create_deltas"]["steps"]
-                     if step.get("uses", "").startswith("actions/download-artifact")]
-        self.assertEqual([d["name"] for d in downloads], ["tiles_${{ matrix.state.name }}"])
-        publish = next(step for step in jobs["release"]["steps"]
-                       if step.get("name") == "Publish release")
-        self.assertIn("deltas/**/*.hdelta", publish["with"]["files"])
+        publish = jobs["publish_release"]
+        self.assertIn("github.ref == 'refs/heads/main'", publish["if"])
+        self.assertIn("needs.generate_state_tiles.result == 'success'", publish["if"])
+        run = next(s for s in publish["steps"] if s.get("name") == "Publish the release")["run"]
+        self.assertIn("release-assets.py publish", run)
+        self.assertIn("--regions", run)
+        self.assertIn("github.ref == 'refs/heads/main'", jobs["open_release"]["if"])
+        # Branch runs keep their tiles as artifacts for review instead.
+        keep = next(s for s in jobs["generate_state_tiles"]["steps"] if s.get("name", "").startswith("Keep tiles"))
+        self.assertEqual(keep["if"], "github.ref != 'refs/heads/main'")
+        self.assertEqual(keep["uses"], "actions/upload-artifact@v7")
 
-    def test_a_run_can_reuse_the_tiles_of_an_earlier_run(self):
-        jobs = WORKFLOW["jobs"]
-        on = WORKFLOW.get("on") or WORKFLOW.get(True)
-        self.assertIn("reuse_run_id", on["workflow_dispatch"]["inputs"])
-        for name in ("prepare_tilemaker", "prepare_austria", "prepare_switzerland",
-                     "generate_state_tiles"):
-            self.assertIn("inputs.reuse_run_id == ''", jobs[name]["if"], name)
-        # Deltas and the release still run when the build was skipped on purpose,
-        # and take their artifacts from the reused run.
-        for name in ("create_deltas", "release"):
-            self.assertIn("inputs.reuse_run_id != ''", jobs[name]["if"], name)
-            self.assertIn("skipped", jobs[name]["if"], name)
-            for step in jobs[name]["steps"]:
-                if step.get("uses", "").startswith("actions/download-artifact") and \
-                        str(step["with"].get("name", step["with"].get("pattern", ""))).startswith("tiles_"):
-                    # The delta job only exists for a reuse; the release serves both.
-                    expected = ("${{ inputs.reuse_run_id }}" if name == "create_deltas"
-                                else "${{ inputs.reuse_run_id || github.run_id }}")
-                    self.assertEqual(step["with"]["run-id"], expected)
-                    self.assertIn("github-token", step["with"])
-
-    def test_tiles_are_handed_over_on_the_runner_before_downloading(self):
-        jobs = WORKFLOW["jobs"]
-        names = lambda job: [s.get("name", "") for s in jobs[job]["steps"]]
-        build = names("generate_state_tiles")
-        self.assertLess(build.index("Verify tiles for ${{ matrix.state.name }}"),
-                        next(i for i, n in enumerate(build) if n.startswith("Keep tiles for")))
-        self.assertLess(next(i for i, n in enumerate(build) if n.startswith("Keep tiles for")),
-                        build.index("Upload tiles for ${{ matrix.state.name }}"))
-        for job in ("create_deltas", "release"):
-            steps = jobs[job]["steps"]
-            local = next(s for s in steps if s.get("id") == "local")
-            fallback = next(s for s in steps if s.get("uses", "").startswith("actions/download-artifact")
-                            and str(s["with"].get("name", s["with"].get("pattern", ""))).startswith("tiles_"))
-            self.assertLess(steps.index(local), steps.index(fallback), job)
-            self.assertIn("steps.local.outputs.found != 'true'", fallback["if"], job)
-        recovery = next(s for s in jobs["create_deltas"]["steps"] if s.get("name", "").startswith("Build map deltas"))
-        self.assertEqual(recovery["uses"], "./.github/actions/build-map-deltas")
-        steps = [s.get("name", "") for s in jobs["release"]["steps"]]
-        # Published files become the next run's delta bases, only after publishing.
-        self.assertLess(steps.index("Publish release"), steps.index("Keep the published files as delta bases"))
-        adopt = next(s for s in jobs["release"]["steps"] if s.get("name") == "Keep the published files as delta bases")
-        self.assertNotIn("always()", str(adopt.get("if", "")))
-        self.assertIn("adopt", adopt["run"])
-        self.assertIn("forget", adopt["run"])
-        self.assertTrue(any(n.startswith("Drop stale tile runs") for n in steps))
-        self.assertEqual(jobs["release"]["steps"][0].get("uses"), "actions/checkout@v7")
-
-    def test_only_main_publishes(self):
-        release = WORKFLOW["jobs"]["release"]
-        self.assertIn("github.ref == 'refs/heads/main'", release["if"])
-        self.assertEqual(WORKFLOW["jobs"]["generate_state_tiles"]["needs"],
-                         ["select_regions", "prepare_tilemaker", "prepare_austria",
-                          "prepare_switzerland"])
+    def test_no_job_needs_the_gh_cli(self):
+        text = (ROOT / ".github/workflows/generate-tiles.yml").read_text()
+        action = (ROOT / ".github/actions/build-map-deltas/action.yml").read_text()
+        for source in (text, action):
+            self.assertNotRegex(source, r"(^|\s)gh (release|api|run)\b")
 
 
 if __name__ == "__main__":

@@ -150,6 +150,8 @@ def main():
                     "base_sha256": base["digest"][7:],
                     "base_canonical_sha256": base_hash,
                     "target_canonical_sha256": target_hash,
+                    "base_canonical_size": base_canonical.stat().st_size,
+                    "target_canonical_size": target_canonical.stat().st_size,
                     "target_size": full_size,
                 }, patch)
                 read_container(container)

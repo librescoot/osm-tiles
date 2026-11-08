@@ -96,6 +96,10 @@ class MapDeltaTest(unittest.TestCase):
             self.assertEqual(header["base_sha256"], digest)
             self.assertEqual(header["format"], "mbtiles-canonical-1")
             self.assertEqual(header["algorithm"], "hdiffpatch")
+            # The dashboard checks free space from these before it rebuilds.
+            self.assertGreater(header["base_canonical_size"], 0)
+            self.assertGreater(header["target_canonical_size"], 0)
+            self.assertEqual(header["target_size"], target.stat().st_size)
             self.assertTrue(payload)
 
 

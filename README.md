@@ -154,6 +154,15 @@ vehicle can update from any version that still has one, and falls back to the
 full file otherwise. The canonical format is also implemented on the dashboard;
 `tools/canonical-mbtiles.py` is the reference for it.
 
+Jobs hand tiles to each other through the runner's own disk
+(`$HOME/.cache/librescoot-tiles`, or the repository variable `TILE_CACHE_DIR`)
+instead of downloading them again: the build job stores each verified region
+with `tools/tile-cache.sh`, and the delta and release jobs take it from there,
+falling back to the workflow artifact only when the runner has no copy. Base
+releases for the deltas are cached the same way by `tools/create-map-deltas.py`,
+verified against the release's own digest before use, so a monthly run downloads
+only the release that is new. Built tiles are dropped after a week.
+
 To publish from tiles that an earlier run already built and verified, start the
 workflow with `reuse_run_id` set to that run's ID (and the same regions). The
 tile build is skipped; deltas are built and the release is published from that

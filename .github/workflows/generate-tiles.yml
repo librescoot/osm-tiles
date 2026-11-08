@@ -265,6 +265,16 @@ jobs:
           python3 tools/verify-mbtiles.py \
             /tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles
 
+      # The delta and release jobs run on this same runner, so they take the
+      # file from disk instead of downloading it again; the artifact below is
+      # only the fallback (and what a branch run keeps for review).
+      - name: Keep tiles for ${{ matrix.state.name }} on the runner
+        env:
+          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
+        run: |
+          tools/tile-cache.sh store "${{ github.run_id }}" "${{ matrix.state.name }}" \
+            "/tmp/tilemaker-artifacts/tiles_${{ matrix.state.name }}.mbtiles"
+
       - name: Upload tiles for ${{ matrix.state.name }}
         uses: actions/upload-artifact@v7
         with:
@@ -298,7 +308,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Look for ${{ matrix.state.name }} tiles on the runner
+        id: local
+        env:
+          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
+        run: |
+          if tools/tile-cache.sh fetch "${{ inputs.reuse_run_id || github.run_id }}" \
+               "${{ matrix.state.name }}" "artifacts/${{ matrix.state.name }}"; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Using the tiles already on this runner"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download tiles for ${{ matrix.state.name }}
+        if: steps.local.outputs.found != 'true'
         uses: actions/download-artifact@v8
         with:
           name: tiles_${{ matrix.state.name }}
@@ -320,9 +344,13 @@ jobs:
       - name: Build deltas for ${{ matrix.state.name }}
         env:
           GH_TOKEN: ${{ github.token }}
+          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
         run: |
           set -euo pipefail
-          python3 tools/create-map-deltas.py artifacts --bases 2
+          # Published bases are kept between runs, so only the release that is
+          # new since last time is downloaded.
+          python3 tools/create-map-deltas.py artifacts --bases 2 \
+            --cache-dir "${TILE_CACHE_DIR:-$HOME/.cache/librescoot-tiles}/bases"
           find artifacts -name '*.hdelta' -exec ls -lh {} + || true
 
       - name: Upload deltas for ${{ matrix.state.name }}
@@ -349,7 +377,24 @@ jobs:
        (inputs.reuse_run_id != '' && needs.generate_state_tiles.result == 'skipped')) &&
       (needs.create_deltas.result == 'success' || needs.create_deltas.result == 'skipped')
     steps:
+      - uses: actions/checkout@v7
+
+      - name: Look for the tiles on the runner
+        id: local
+        env:
+          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
+        run: |
+          if tools/tile-cache.sh fetch-all "${{ inputs.reuse_run_id || github.run_id }}" \
+               "${{ needs.select_regions.outputs.count }}" artifacts; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Using the tiles already on this runner"
+          else
+            rm -rf artifacts
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download all tile artifacts
+        if: steps.local.outputs.found != 'true'
         uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -428,3 +473,11 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           repository: librescoot/downloads.librescoot.org
           event-type: releases-changed
+
+      # Built tiles are only needed while a run (or a reuse of it) still has to
+      # publish them; a week is plenty and keeps the runner's disk in check.
+      - name: Drop old tile runs from the runner
+        if: always()
+        env:
+          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
+        run: tools/tile-cache.sh prune 7

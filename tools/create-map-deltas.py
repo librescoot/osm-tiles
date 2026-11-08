@@ -125,11 +125,59 @@ def download_asset(release, name, destination):
         shutil.copyfileobj(response, out, 1 << 20)
 
 
+def fetch_base(base, scratch, cache_dir):
+    """Return a verified local copy of a published base file.
+
+    With a cache directory the file is kept between runs, keyed by release tag,
+    so each monthly run downloads only the release that is new. A cached file is
+    trusted only after its size and SHA-256 match the release's own digest, and
+    a download is verified before it is moved into place, so a partial or
+    corrupted transfer is never reused.
+    """
+    expected = base["digest"][7:]
+    if cache_dir:
+        cached = Path(cache_dir) / base["version"] / base["name"]
+        if cached.is_file() and cached.stat().st_size == base["size"] and sha256(cached) == expected:
+            return cached, False
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        partial = cached.with_name(cached.name + ".part")
+        download_asset(base["release"], base["name"], partial)
+        if partial.stat().st_size != base["size"] or sha256(partial) != expected:
+            partial.unlink(missing_ok=True)
+            raise RuntimeError(f"base verification failed: {base['version']}/{base['name']}")
+        os.replace(partial, cached)
+        return cached, True
+    fresh = Path(scratch) / base["name"]
+    download_asset(base["release"], base["name"], fresh)
+    if fresh.stat().st_size != base["size"] or sha256(fresh) != expected:
+        fresh.unlink(missing_ok=True)
+        raise RuntimeError(f"base verification failed: {base['version']}/{base['name']}")
+    return fresh, True
+
+
+def prune_cache(cache_dir, region, keep_versions):
+    """Drop this region's cached bases that are no longer candidates."""
+    root = Path(cache_dir)
+    if not root.is_dir():
+        return
+    name = f"tiles_{region}.mbtiles"
+    for tag_dir in root.iterdir():
+        if not tag_dir.is_dir() or tag_dir.name in keep_versions:
+            continue
+        for leftover in (tag_dir / name, tag_dir / (name + ".part")):
+            leftover.unlink(missing_ok=True)
+        if not any(tag_dir.iterdir()):
+            tag_dir.rmdir()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifacts", type=Path)
     parser.add_argument("--bases", type=int, default=2,
                         help="how many recent bases per region (default 2)")
+    parser.add_argument("--cache-dir", default=os.environ.get("MAP_BASE_CACHE"),
+                        help="keep downloaded base releases here between runs "
+                             "(default: $MAP_BASE_CACHE, otherwise download every time)")
     parser.add_argument("--max-ratio", type=float, default=0.9,
                         help="drop a delta larger than this fraction of the full file")
     args = parser.parse_args()
@@ -156,10 +204,9 @@ def main():
                 conn.close()
             full_size = target.stat().st_size
             for base in candidates:
-                base_file = tmp / base["name"]
-                download_asset(base["release"], base["name"], base_file)
-                if base_file.stat().st_size != base["size"] or sha256(base_file) != base["digest"][7:]:
-                    raise RuntimeError(f"base verification failed: {base['version']}/{base['name']}")
+                base_file, downloaded = fetch_base(base, tmp, args.cache_dir)
+                print(f"{region}: base {base['version']} "
+                      f"{'downloaded' if downloaded else 'from cache'}", flush=True)
                 conn = __import__("sqlite3").connect(f"file:{base_file}?mode=ro", uri=True)
                 try:
                     base_canonical = tmp / f"{region}-{base['version']}.canonical"
@@ -192,10 +239,13 @@ def main():
                 else:
                     print(f"{region}: {base['version']} -> {container.name}, "
                           f"{container.stat().st_size} bytes", flush=True)
-                base_file.unlink()
+                if not args.cache_dir:
+                    base_file.unlink()
                 base_canonical.unlink()
                 patch.unlink()
             target_canonical.unlink()
+            if args.cache_dir:
+                prune_cache(args.cache_dir, region, {b["version"] for b in candidates})
 
 
 if __name__ == "__main__":

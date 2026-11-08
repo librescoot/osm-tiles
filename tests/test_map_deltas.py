@@ -42,6 +42,59 @@ class MapDeltaTest(unittest.TestCase):
         self.assertEqual([entry["digest"] for entry in picked],
                          ["sha256:" + b, "sha256:" + a])
 
+    def test_cache_reuses_a_verified_base_and_drops_bad_ones(self):
+        data = b"published map bytes"
+        digest = hashlib.sha256(data).hexdigest()
+        base = {"version": "tiles-20261001T000000Z", "name": "tiles_bremen.mbtiles",
+                "digest": "sha256:" + digest, "size": len(data), "release": {}}
+        calls = []
+
+        def fetch(release, name, destination):
+            calls.append(destination)
+            Path(destination).write_bytes(data)
+
+        with tempfile.TemporaryDirectory() as cache, tempfile.TemporaryDirectory() as scratch, \
+                mock.patch.object(mod, "download_asset", side_effect=fetch):
+            path, fresh = mod.fetch_base(base, scratch, cache)
+            self.assertTrue(fresh)
+            self.assertEqual(path, Path(cache) / base["version"] / base["name"])
+            self.assertEqual(path.read_bytes(), data)
+            self.assertFalse(list(Path(cache).rglob("*.part")))
+            # Second run: served from the cache, nothing downloaded.
+            path, fresh = mod.fetch_base(base, scratch, cache)
+            self.assertFalse(fresh)
+            self.assertEqual(len(calls), 1)
+            # A cached file that no longer matches the digest is fetched again.
+            path.write_bytes(b"corrupted")
+            path, fresh = mod.fetch_base(base, scratch, cache)
+            self.assertTrue(fresh)
+            self.assertEqual(path.read_bytes(), data)
+            self.assertEqual(len(calls), 2)
+
+    def test_cache_rejects_a_bad_download_without_keeping_it(self):
+        base = {"version": "tiles-20261001T000000Z", "name": "tiles_bremen.mbtiles",
+                "digest": "sha256:" + "0" * 64, "size": 3, "release": {}}
+        with tempfile.TemporaryDirectory() as cache, tempfile.TemporaryDirectory() as scratch, \
+                mock.patch.object(mod, "download_asset",
+                                  side_effect=lambda r, n, d: Path(d).write_bytes(b"abc")):
+            with self.assertRaises(RuntimeError):
+                mod.fetch_base(base, scratch, cache)
+            self.assertEqual(list(Path(cache).rglob("*.mbtiles*")), [])
+            with self.assertRaises(RuntimeError):
+                mod.fetch_base(base, scratch, None)
+            self.assertEqual(list(Path(scratch).iterdir()), [])
+
+    def test_prune_removes_only_this_regions_stale_bases(self):
+        with tempfile.TemporaryDirectory() as cache:
+            for tag in ("tiles-1", "tiles-2", "tiles-3"):
+                (Path(cache) / tag).mkdir()
+                (Path(cache) / tag / "tiles_bremen.mbtiles").write_bytes(b"x")
+                (Path(cache) / tag / "tiles_hamburg.mbtiles").write_bytes(b"y")
+            mod.prune_cache(cache, "bremen", {"tiles-3"})
+            left = sorted(str(p.relative_to(cache)) for p in Path(cache).rglob("*.mbtiles"))
+            self.assertEqual(left, ["tiles-1/tiles_hamburg.mbtiles", "tiles-2/tiles_hamburg.mbtiles",
+                                    "tiles-3/tiles_bremen.mbtiles", "tiles-3/tiles_hamburg.mbtiles"])
+
     def test_runs_without_the_gh_cli(self):
         # The self-hosted runners do not have gh; nothing may shell out to it.
         source = (ROOT / "tools/create-map-deltas.py").read_text()

@@ -70,6 +70,26 @@ class TilemakerPinningTest(unittest.TestCase):
                     self.assertEqual(step["with"]["run-id"], "${{ inputs.reuse_run_id || github.run_id }}")
                     self.assertIn("github-token", step["with"])
 
+    def test_tiles_are_handed_over_on_the_runner_before_downloading(self):
+        jobs = WORKFLOW["jobs"]
+        names = lambda job: [s.get("name", "") for s in jobs[job]["steps"]]
+        build = names("generate_state_tiles")
+        self.assertLess(build.index("Verify tiles for ${{ matrix.state.name }}"),
+                        next(i for i, n in enumerate(build) if n.startswith("Keep tiles for")))
+        self.assertLess(next(i for i, n in enumerate(build) if n.startswith("Keep tiles for")),
+                        build.index("Upload tiles for ${{ matrix.state.name }}"))
+        for job in ("create_deltas", "release"):
+            steps = jobs[job]["steps"]
+            local = next(s for s in steps if s.get("id") == "local")
+            fallback = next(s for s in steps if s.get("uses", "").startswith("actions/download-artifact")
+                            and str(s["with"].get("name", s["with"].get("pattern", ""))).startswith("tiles_"))
+            self.assertLess(steps.index(local), steps.index(fallback), job)
+            self.assertIn("steps.local.outputs.found != 'true'", fallback["if"], job)
+        deltas = next(s for s in jobs["create_deltas"]["steps"] if s.get("name", "").startswith("Build deltas"))
+        self.assertIn("--cache-dir", deltas["run"])
+        self.assertTrue(any(s.get("name", "").startswith("Drop old tile runs") for s in jobs["release"]["steps"]))
+        self.assertEqual(jobs["release"]["steps"][0].get("uses"), "actions/checkout@v7")
+
     def test_only_main_publishes(self):
         release = WORKFLOW["jobs"]["release"]
         self.assertIn("github.ref == 'refs/heads/main'", release["if"])

@@ -1,0 +1,17 @@
+name: Runner cache info
+on:
+  workflow_dispatch:
+jobs:
+  info:
+    runs-on: self-hosted
+    steps:
+      - name: Show the tile cache
+        run: |
+          echo "user=$(id -un) HOME=$HOME"
+          root="${TILE_CACHE_DIR:-$HOME/.cache/librescoot-tiles}"
+          echo "root=$root"
+          ls -la "$root" "$root/runs" "$root/bases" 2>&1 | head -40
+          for d in "$root"/runs/*/; do echo "$d: $(ls "$d" | wc -l) files, $(du -sh "$d" | cut -f1)"; done 2>&1
+          ls "$root/runs/42490782497" 2>&1 | head -30
+          echo "--- disk"; df -h "$HOME" /opt/actions-runner/_work /tmp 2>&1
+          echo "--- same filesystem as the workspace?"; stat -c '%d %n' "$HOME" "$root" /opt/actions-runner/_work 2>&1

@@ -145,6 +145,15 @@ PBF downloads require `curl` and GNU `date`. They log errors and retry up to thr
 
 Manual trigger: Actions → "Generate Custom Shortbread Tiles - Germany + Benelux + France + Italy + Spain + Austria" → Run workflow. Enter `all` or comma-separated region IDs such as `alsace,islas-baleares,graz,vienna`. A successful build on `main` publishes a timestamped release with only the selected regions; builds on other branches leave workflow artifacts. Monthly runs build the full list in `.github/regions.json`.
 
+Each release also carries map deltas for the region's recent published versions.
+The patch is an HDiffPatch stream over `tools/canonical-mbtiles.py`'s canonical
+form (schema, rows in a fixed order, decompressed tile payloads), wrapped in a
+small header with the base and target canonical hashes. Deltas refer to
+immutable earlier releases, so they keep working and are never rewritten; a
+vehicle can update from any version that still has one, and falls back to the
+full file otherwise. The canonical format is also implemented on the dashboard;
+`tools/canonical-mbtiles.py` is the reference for it.
+
 A branch run stops at workflow artifacts: it builds and verifies the tiles but does not create a release, so a generator change can be tried on a scooter without moving the public per-region index. `tools/verify-mbtiles.py` opens every file read-only, checks SQLite integrity, metadata, every tile's gzip stream, a sample of decoded vector tiles and the geocoding tables, and fails the region job on any problem.
 
 ## Technical Details
@@ -155,6 +164,7 @@ A branch run stops at workflow artifacts: it builds and verifies the tiles but d
 - **Source**: [Geofabrik](https://download.geofabrik.de/europe/) regional extracts of [OpenStreetMap](https://www.openstreetmap.org)
 - **Generator**: [Tilemaker](https://github.com/systemed/tilemaker), built from the commit pinned in `tools/tilemaker/Dockerfile` ([upstream PR 981](https://github.com/systemed/tilemaker/pull/981)), which makes tile content independent of thread scheduling
 - **Verification**: `tools/verify-mbtiles.py` runs on every built region before upload
+- **Deltas**: `tools/create-map-deltas.py` publishes `tiles_<region>.from-<base-version>.hdelta` next to each release, patching the canonical tile stream of up to two recent published bases
 
 ## License
 

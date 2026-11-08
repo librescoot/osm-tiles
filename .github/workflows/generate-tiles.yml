@@ -272,19 +272,71 @@ jobs:
           rm -rf /tmp/austrian-city-pbfs-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.state.name }} \
             /tmp/swiss-canton-pbf-${{ github.run_id }}-${{ github.run_attempt }}
 
+  create_deltas:
+    needs: [select_regions, generate_state_tiles]
+    if: needs.generate_state_tiles.result == 'success'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download tile artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: tiles_*
+
+      - name: Install HDiffPatch encoder
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            -o "$RUNNER_TEMP/hdiffpatch.zip" \
+            https://github.com/sisong/HDiffPatch/releases/download/v5.1.3/hdiffpatch_v5.1.3_bin_linux64.zip
+          echo "628963bf2ee9108a97260fa5eef44acd9ec94369b76090a957c9182b3abbb558  $RUNNER_TEMP/hdiffpatch.zip" | sha256sum -c -
+          unzip -j "$RUNNER_TEMP/hdiffpatch.zip" 'linux64/hdiffz' -d "$RUNNER_TEMP/hdiff"
+          chmod 0755 "$RUNNER_TEMP/hdiff/hdiffz"
+          echo "$RUNNER_TEMP/hdiff" >> "$GITHUB_PATH"
+
+      - name: Build deltas against previous releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 tools/create-map-deltas.py artifacts --bases 2
+          find artifacts -name '*.hdelta' -exec ls -lh {} +
+
+      - name: Upload deltas
+        uses: actions/upload-artifact@v7
+        with:
+          name: tiles-deltas
+          path: artifacts/**/*.hdelta
+          if-no-files-found: ignore
+          compression-level: 0
+
+      - name: Free runner disk space
+        if: always()
+        run: rm -rf artifacts
+
   # Only main publishes: a branch run produces Actions artifacts for review, so a
   # generator change can be inspected on a scooter without touching the
   # public per-region index.
   release:
-    needs: [select_regions, generate_state_tiles]
+    needs: [select_regions, generate_state_tiles, create_deltas]
     runs-on: self-hosted
-    if: always() && github.ref == 'refs/heads/main' && needs.generate_state_tiles.result == 'success'
+    if: always() && github.ref == 'refs/heads/main' && needs.generate_state_tiles.result == 'success' &&
+      (needs.create_deltas.result == 'success' || needs.create_deltas.result == 'skipped')
     steps:
       - name: Download all tile artifacts
         uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: tiles_*
+
+      - name: Download map deltas
+        uses: actions/download-artifact@v8
+        with:
+          name: tiles-deltas
+          path: deltas
+        continue-on-error: true
 
       - name: List all artifacts
         run: |
@@ -325,8 +377,11 @@ jobs:
           name: "Custom Shortbread Tiles - ${{ steps.date.outputs.month }}"
           body: "Generated from ${{ github.sha }}."
           prerelease: false
-          files: artifacts/**/*.mbtiles
-          fail_on_unmatched_files: true
+          files: |
+            artifacts/**/*.mbtiles
+            deltas/**/*.hdelta
+          # Deltas are optional: a region without a published base has none.
+          fail_on_unmatched_files: false
 
       # Enable after the downloads site serves the per-region index.
       - name: Generate app token for downloads rebuild

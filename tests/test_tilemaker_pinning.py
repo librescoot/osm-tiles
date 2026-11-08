@@ -32,6 +32,18 @@ class TilemakerPinningTest(unittest.TestCase):
         self.assertLess(steps.index("Verify tiles for ${{ matrix.state.name }}"),
                         steps.index("Upload tiles for ${{ matrix.state.name }}"))
 
+    def test_deltas_are_built_and_kept_with_their_release(self):
+        jobs = WORKFLOW["jobs"]
+        self.assertIn("create_deltas", jobs)
+        self.assertEqual(jobs["release"]["needs"],
+                         ["select_regions", "generate_state_tiles", "create_deltas"])
+        runs = "\n".join(step.get("run", "") for step in jobs["create_deltas"]["steps"])
+        self.assertIn("tools/create-map-deltas.py", runs)
+        self.assertIn("--bases 2", runs)
+        publish = next(step for step in jobs["release"]["steps"]
+                       if step.get("name") == "Publish release")
+        self.assertIn("deltas/**/*.hdelta", publish["with"]["files"])
+
     def test_only_main_publishes(self):
         release = WORKFLOW["jobs"]["release"]
         self.assertIn("github.ref == 'refs/heads/main'", release["if"])

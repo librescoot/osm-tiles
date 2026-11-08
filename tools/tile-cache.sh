@@ -7,14 +7,23 @@
 # artifact when the cache has no copy (a different runner, an expired cache).
 #
 # Layout: $TILE_CACHE_DIR/runs/<run-id>/tiles_<region>.mbtiles
-# TILE_CACHE_DIR defaults to $HOME/.cache/librescoot-tiles. Base releases for
-# the deltas are cached separately by tools/create-map-deltas.py under bases/.
+#         $TILE_CACHE_DIR/bases/<release-tag>/tiles_<region>.mbtiles
+# TILE_CACHE_DIR defaults to $HOME/.cache/librescoot-tiles.
+#
+# A run's tiles are needed only until its release is published (and for a retry
+# of a failed run). Once published, the very same files are the delta bases of
+# the next run, so they move from runs/ to bases/ instead of being downloaded
+# from the release again. tools/create-map-deltas.py reads and prunes bases/
+# and verifies every file against the release digest before using it.
 #
 #   tile-cache.sh store <run-id> <region> <file>       keep a verified file
 #   tile-cache.sh fetch <run-id> <region> <dest-dir>   link one region; exit 1 if absent
 #   tile-cache.sh fetch-all <run-id> <count> <dest-dir>  link every region; exit 1 unless
 #                                                        exactly <count> are present
-#   tile-cache.sh prune [days]                         drop runs older than N days (7)
+#   tile-cache.sh adopt <release-tag> <dir>            after publishing: keep the published
+#                                                      files as the next run's delta bases
+#   tile-cache.sh forget <run-id>                      drop a run that has been published
+#   tile-cache.sh prune [days]                         failsafe: drop runs older than N days (14)
 set -euo pipefail
 
 root="${TILE_CACHE_DIR:-$HOME/.cache/librescoot-tiles}"
@@ -58,8 +67,27 @@ case "$cmd" in
             link_or_copy "$f" "$dest/$region/$(basename "$f")"
         done
         ;;
+    adopt)
+        tag=$1; src=$2
+        [[ "$tag" =~ ^tiles-[A-Za-z0-9]+$ ]] || { echo "bad release tag" >&2; exit 2; }
+        shopt -s nullglob
+        files=("$src"/tiles_*.mbtiles "$src"/*/tiles_*.mbtiles)
+        [ "${#files[@]}" -gt 0 ] || { echo "nothing to adopt in $src" >&2; exit 1; }
+        dir="$root/bases/$tag"
+        mkdir -p "$dir"
+        for f in "${files[@]}"; do
+            name=$(basename "$f")
+            link_or_copy "$f" "$dir/$name.part"
+            mv -f "$dir/$name.part" "$dir/$name"
+        done
+        ;;
+    forget)
+        run=$1
+        [[ "$run" =~ ^[0-9]+$ ]] || { echo "bad arguments" >&2; exit 2; }
+        rm -rf "$root/runs/$run"
+        ;;
     prune)
-        days="${1:-7}"
+        days="${1:-14}"
         [ -d "$root/runs" ] || exit 0
         find "$root/runs" -mindepth 1 -maxdepth 1 -type d -mtime "+$days" -exec rm -rf {} +
         ;;

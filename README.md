@@ -160,8 +160,12 @@ instead of downloading them again: the build job stores each verified region
 with `tools/tile-cache.sh`, and the delta and release jobs take it from there,
 falling back to the workflow artifact only when the runner has no copy. Base
 releases for the deltas are cached the same way by `tools/create-map-deltas.py`,
-verified against the release's own digest before use, so a monthly run downloads
-only the release that is new. Built tiles are dropped after a week.
+verified against the release's own digest before use. After a release is
+published its files simply become the next run's delta bases (moved from the
+run's folder to the base cache), so a monthly run downloads no base at all for
+the newest version and only the older one if it was never cached. A run's own
+tiles are removed once published; a failsafe drops runs older than 14 days that
+never published, such as branch runs.
 
 To publish from tiles that an earlier run already built and verified, start the
 workflow with `reuse_run_id` set to that run's ID (and the same regions). The

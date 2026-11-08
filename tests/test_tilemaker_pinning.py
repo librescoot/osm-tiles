@@ -87,7 +87,14 @@ class TilemakerPinningTest(unittest.TestCase):
             self.assertIn("steps.local.outputs.found != 'true'", fallback["if"], job)
         deltas = next(s for s in jobs["create_deltas"]["steps"] if s.get("name", "").startswith("Build deltas"))
         self.assertIn("--cache-dir", deltas["run"])
-        self.assertTrue(any(s.get("name", "").startswith("Drop old tile runs") for s in jobs["release"]["steps"]))
+        steps = [s.get("name", "") for s in jobs["release"]["steps"]]
+        # Published files become the next run's delta bases, only after publishing.
+        self.assertLess(steps.index("Publish release"), steps.index("Keep the published files as delta bases"))
+        adopt = next(s for s in jobs["release"]["steps"] if s.get("name") == "Keep the published files as delta bases")
+        self.assertNotIn("always()", str(adopt.get("if", "")))
+        self.assertIn("adopt", adopt["run"])
+        self.assertIn("forget", adopt["run"])
+        self.assertTrue(any(n.startswith("Drop stale tile runs") for n in steps))
         self.assertEqual(jobs["release"]["steps"][0].get("uses"), "actions/checkout@v7")
 
     def test_only_main_publishes(self):

@@ -474,10 +474,18 @@ jobs:
           repository: librescoot/downloads.librescoot.org
           event-type: releases-changed
 
-      # Built tiles are only needed while a run (or a reuse of it) still has to
-      # publish them; a week is plenty and keeps the runner's disk in check.
-      - name: Drop old tile runs from the runner
+      # Once published, the files are the next run's delta bases, so they stay
+      # on the runner as such, and the run's own copy is no longer needed.
+      - name: Keep the published files as delta bases
+        env:
+          TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
+        run: |
+          tools/tile-cache.sh adopt "${{ steps.publish.outputs.tag }}" artifacts
+          tools/tile-cache.sh forget "${{ inputs.reuse_run_id || github.run_id }}"
+
+      # Failsafe for runs that never published (branch runs, abandoned retries).
+      - name: Drop stale tile runs from the runner
         if: always()
         env:
           TILE_CACHE_DIR: ${{ vars.TILE_CACHE_DIR }}
-        run: tools/tile-cache.sh prune 7
+        run: tools/tile-cache.sh prune 14

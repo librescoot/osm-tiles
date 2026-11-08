@@ -73,6 +73,45 @@ class TileCacheTest(unittest.TestCase):
         self.assertFalse((self.root / "runs/1").exists())
         self.assertTrue((self.root / "runs/2/tiles_bremen.mbtiles").exists())
 
+    def test_adopt_keeps_published_files_as_next_runs_bases(self):
+        out = self.work / "artifacts"
+        for region in ("bremen", "hamburg"):
+            (out / region).mkdir(parents=True)
+            (out / region / f"tiles_{region}.mbtiles").write_bytes(region.encode())
+        self.run_cache("adopt", "tiles-20261108T120000Z", str(out), check=True)
+        base = self.root / "bases/tiles-20261108T120000Z"
+        self.assertEqual((base / "tiles_bremen.mbtiles").read_bytes(), b"bremen")
+        self.assertEqual((base / "tiles_hamburg.mbtiles").read_bytes(), b"hamburg")
+        self.assertFalse(list(base.glob("*.part")))
+        # Removing the working copies must not take the cached bases with it.
+        for f in out.rglob("*.mbtiles"):
+            f.unlink()
+        self.assertTrue((base / "tiles_bremen.mbtiles").exists())
+
+    def test_adopt_refuses_odd_tags_and_empty_input(self):
+        self.assertEqual(self.run_cache("adopt", "../x", str(self.work)).returncode, 2)
+        self.assertEqual(self.run_cache("adopt", "tiles-1", str(self.work)).returncode, 1)
+        self.assertFalse((self.root / "bases").exists())
+
+    def test_forget_drops_only_that_run(self):
+        for run in ("1", "2"):
+            self.run_cache("store", run, "bremen", str(self.tile("a.mbtiles")), check=True)
+        self.run_cache("forget", "1", check=True)
+        self.assertFalse((self.root / "runs/1").exists())
+        self.assertTrue((self.root / "runs/2").exists())
+        self.assertEqual(self.run_cache("forget", "../2").returncode, 2)
+
+    def test_prune_defaults_to_two_weeks(self):
+        self.run_cache("store", "1", "bremen", str(self.tile("a.mbtiles")), check=True)
+        self.run_cache("store", "2", "bremen", str(self.tile("a.mbtiles")), check=True)
+        for run, days in (("1", 10), ("2", 20)):
+            d = self.root / "runs" / run
+            past = d.stat().st_mtime - days * 86400
+            os.utime(d, (past, past))
+        self.run_cache("prune", check=True)
+        self.assertTrue((self.root / "runs/1").exists())
+        self.assertFalse((self.root / "runs/2").exists())
+
     def test_fetch_survives_the_cache_being_deleted_afterwards(self):
         self.run_cache("store", "5", "bremen", str(self.tile("a.mbtiles", b"keep")), check=True)
         out = self.work / "o"

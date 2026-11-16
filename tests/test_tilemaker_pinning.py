@@ -1,8 +1,9 @@
 """The tile build pins its generator and never publishes from a branch."""
 
-from pathlib import Path
+import hashlib
 import re
 import unittest
+from pathlib import Path
 
 import yaml
 
@@ -17,6 +18,16 @@ class TilemakerPinningTest(unittest.TestCase):
         self.assertIsNotNone(commit, "tilemaker commit must be a full SHA")
         self.assertRegex(DOCKERFILE, r"debian:trixie-slim@sha256:[0-9a-f]{64}")
         self.assertNotIn("tilemaker:latest", DOCKERFILE)
+
+    def test_geometry_patch_is_pinned_and_applied(self):
+        patch = ROOT / "tools/tilemaker/patches/tilemaker-pr974-976.patch"
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        self.assertEqual(
+            digest,
+            "86d17efa34de707e8a50828683e76abc43e11cbd624fa4d646ee897ca3799cc7",
+        )
+        self.assertIn("git apply --check /tmp/tilemaker-pr974-976.patch", DOCKERFILE)
+        self.assertIn("git apply /tmp/tilemaker-pr974-976.patch", DOCKERFILE)
 
     def test_runs_the_built_image_not_a_floating_tag(self):
         job = WORKFLOW["jobs"]["generate_state_tiles"]

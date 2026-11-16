@@ -137,6 +137,9 @@ Test changes on a small region (Bremen at 9 MB, Luxembourg at 16 MB) before runn
 | Nordrhein-Westfalen | ~30 min | ~16 GB |
 | Netherlands | ~25 min | ~14 GB |
 
+The pinned Tilemaker image applies a hash-pinned patch set for multipolygon
+processing (upstream PRs #974-#976); see `tools/tilemaker/Dockerfile`.
+
 ## Automated Builds
 
 GitHub Actions generates tiles for all 24 regions monthly on the 1st ([workflow](.github/workflows/generate-tiles.yml)). Each region runs in parallel. Results are published as timestamped GitHub releases. The Austrian city extracts are prepared once per run from the ~810 MB country PBF (about 1 GB peak disk), with a 3 GB free-space check; the source and extracts are deleted from the runner after upload. Each regional job removes its input PBF and output tile after uploading the artifact.

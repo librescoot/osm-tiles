@@ -10,9 +10,9 @@
 # Build with:
 #   docker build -t tilemaker-deterministic tools/tilemaker
 #
-# The base image digest and the tilemaker commit are pinned so a rebuild is
-# reproducible. Update both together with the patch set below when upstream
-# merges the change and a new release is chosen.
+# The base image digest, tilemaker commit and geometry patch are pinned so a
+# rebuild is reproducible. The patch carries upstream multipolygon optimizations
+# from PRs 974-976, tested against the regional profile.
 ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 
 FROM ${DEBIAN_IMAGE} AS build
@@ -40,11 +40,15 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 WORKDIR /src
 
+COPY patches/tilemaker-pr974-976.patch /tmp/tilemaker-pr974-976.patch
+
 RUN git init -q . \
     && git remote add origin https://github.com/systemed/tilemaker.git \
     && git fetch -q --depth 1 origin "${TILEMAKER_COMMIT}" \
     && git checkout -q FETCH_HEAD \
-    && rm -rf .git
+    && git apply --check /tmp/tilemaker-pr974-976.patch \
+    && git apply /tmp/tilemaker-pr974-976.patch \
+    && rm -rf .git /tmp/tilemaker-pr974-976.patch
 
 RUN cmake -S . -B build \
         -DCMAKE_BUILD_TYPE=Release \
@@ -55,7 +59,7 @@ RUN cmake -S . -B build \
 FROM ${DEBIAN_IMAGE}
 
 LABEL org.opencontainers.image.title="Librescoot tilemaker" \
-      org.opencontainers.image.description="Tilemaker with deterministic tile content (upstream PR 981)" \
+      org.opencontainers.image.description="Tilemaker with deterministic output and optimized multipolygon processing" \
       org.opencontainers.image.source="https://github.com/librescoot/osm-tiles"
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

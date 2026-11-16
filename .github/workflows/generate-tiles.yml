@@ -120,17 +120,20 @@ jobs:
         run: rm -rf "${{ runner.temp }}/osm-switzerland-${{ github.run_id }}-${{ github.run_attempt }}"
 
   # Tilemaker is built from a pinned commit instead of a floating image tag.
-  # Building once and passing the image to the region jobs keeps 25 matrix jobs
-  # from compiling the same source and guarantees they all use identical bytes.
+  # Building once and sharing its image ID keeps the matrix jobs identical.
   prepare_tilemaker:
     runs-on: self-hosted
+    outputs:
+      image_id: ${{ steps.build.outputs.image_id }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Build tilemaker image
+        id: build
         run: |
           set -euo pipefail
           docker build -t tilemaker-deterministic tools/tilemaker
+          echo "image_id=$(docker image inspect --format '{{.Id}}' tilemaker-deterministic)" >> "$GITHUB_OUTPUT"
 
       - name: Save tilemaker image
         run: |
@@ -240,13 +243,31 @@ jobs:
           echo "Download completed for ${{ matrix.state.name }}"
           ls -lh /tmp/${{ matrix.state.name }}.osm.pbf
 
+      # Self-hosted runners retain Docker images between jobs. Check the full
+      # image ID so warm runners skip the per-region artifact transfer; cold
+      # runners still load the verified image from the workflow artifact.
+      - name: Check cached tilemaker image
+        id: tilemaker-cache
+        env:
+          EXPECTED_IMAGE_ID: ${{ needs.prepare_tilemaker.outputs.image_id }}
+        run: |
+          set -euo pipefail
+          actual=$(docker image inspect --format '{{.Id}}' tilemaker-deterministic 2>/dev/null || true)
+          if [[ -n "$actual" && "$actual" == "$EXPECTED_IMAGE_ID" ]]; then
+            echo 'hit=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'hit=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download tilemaker image
+        if: steps.tilemaker-cache.outputs.hit != 'true'
         uses: actions/download-artifact@v8
         with:
           name: tilemaker-image
           path: ${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Load tilemaker image
+        if: steps.tilemaker-cache.outputs.hit != 'true'
         run: |
           set -euo pipefail
           zstd -d -q -f "${{ runner.temp }}/tilemaker-image-${{ github.run_id }}-${{ github.run_attempt }}/tilemaker-deterministic.tar.zst" \

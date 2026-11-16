@@ -36,6 +36,21 @@ class TilemakerPinningTest(unittest.TestCase):
         self.assertNotIn("versatiles/versatiles-tilemaker", runs)
         self.assertIn("needs.prepare_tilemaker.result == 'success'", job["if"])
 
+    def test_matrix_jobs_skip_cached_tilemaker_artifact_only_on_exact_image_id(self):
+        jobs = WORKFLOW["jobs"]
+        prepare = jobs["prepare_tilemaker"]
+        self.assertEqual(prepare["outputs"]["image_id"], "${{ steps.build.outputs.image_id }}")
+        build = next(s for s in prepare["steps"] if s.get("id") == "build")
+        self.assertIn("docker image inspect", build["run"])
+
+        steps = jobs["generate_state_tiles"]["steps"]
+        check = next(s for s in steps if s.get("id") == "tilemaker-cache")
+        self.assertIn("EXPECTED_IMAGE_ID", check["env"])
+        self.assertIn("\"$actual\" == \"$EXPECTED_IMAGE_ID\"", check["run"])
+        for name in ("Download tilemaker image", "Load tilemaker image"):
+            step = next(s for s in steps if s.get("name") == name)
+            self.assertEqual(step["if"], "steps.tilemaker-cache.outputs.hit != 'true'")
+
     def test_every_region_is_verified_after_the_geocoding_index(self):
         steps = [step.get("name", "") for step in WORKFLOW["jobs"]["generate_state_tiles"]["steps"]]
         self.assertLess(steps.index("Build geocoding index for ${{ matrix.state.name }}"),

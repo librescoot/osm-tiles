@@ -20,6 +20,7 @@ iteration, no PIP, no on-device alias generation.
 
 import argparse
 import gzip
+from functools import lru_cache
 import math
 import re
 import sqlite3
@@ -27,10 +28,11 @@ import sys
 import time
 from collections import defaultdict
 
-import mapbox_vector_tile
+from mapbox_vector_tile import decoder as vector_tile_decoder
 import osmium
 import shapely.wkb
-from shapely.geometry import MultiPolygon, Point, Polygon
+from shapely import points as shapely_points
+from shapely.geometry import MultiPolygon, Polygon
 from shapely.strtree import STRtree
 
 
@@ -44,6 +46,7 @@ STREET_NAME_SUFFIX_RE = re.compile(
 )
 
 
+@lru_cache(maxsize=262144)
 def normalize(name: str) -> str:
     """Mirrors AddressDatabaseService::normalize() in scootui-qt.
 
@@ -165,6 +168,51 @@ def gen_aliases(tags: dict, name: str):
             if len(seg) >= 4 and seg not in DIRECTION_STOP:
                 add(seg, "segment")
     return [(d, n, s) for n, (d, s) in seen.items()]
+
+
+def decode_address_tile(blob):
+    """Decode only the address layer and fields used by the index."""
+    vector_tile = vector_tile_decoder.TileData(blob)
+    layer = next((layer for layer in vector_tile.tile.layers
+                  if layer.name == "addresses"), None)
+    if layer is None:
+        return {}
+
+    keys = layer.keys
+    values = layer.values
+    selected_keys = {i for i, key in enumerate(keys)
+                     if key in ("street", "name", "postcode")}
+    features = []
+    for feature in layer.features:
+        tags = feature.tags
+        props = {}
+        assert len(tags) % 2 == 0, "Unexpected number of tags"
+        for i in range(0, len(tags), 2):
+            key_idx = tags[i]
+            if key_idx in selected_keys:
+                props[keys[key_idx]] = vector_tile_decoder.TileData.parse_value(
+                    values[tags[i + 1]]
+                )
+        geometry = vector_tile.parse_geometry(
+            geom=feature.geometry,
+            ftype=feature.type,
+            extent=layer.extent,
+            y_coord_down=False,
+            transformer=None,
+        )
+        features.append({
+            "geometry": geometry,
+            "properties": props,
+            "id": feature.id,
+            "type": "Feature",
+        })
+
+    return {"addresses": {
+        "extent": layer.extent,
+        "version": layer.version,
+        "features": features,
+        "type": "FeatureCollection",
+    }}
 
 
 class PlaceCollector(osmium.SimpleHandler):
@@ -328,16 +376,15 @@ def reset_schema(db):
     cur.executescript(SCHEMA_SQL)
 
 
-def index_addresses(db, places, place_geoms, tree):
-    """Iterate address tiles, PIP, aggregate per place/street/postcode."""
+def index_addresses(db, places, tree):
+    """Decode addresses and query their place polygons in tile-sized batches."""
     place_addr_count = defaultdict(int)
     place_streets_seen = defaultdict(set)
     # (place_id, street_norm) -> [count, sum_lat, sum_lng, display]
     street_runs = {}
     # (place_id, street_norm, postcode) -> [count, sum_lat, sum_lng]
     pc_runs = {}
-    # Exact MVT coverage for fast device-side house-number lookup. Empty
-    # postcode is retained so postcode-less addresses remain discoverable.
+    # Keep postcode-less address tiles for exact device-side lookup.
     # (place_id, street_norm, postcode) -> {(tile_column, tile_row), ...}
     street_tiles = defaultdict(set)
 
@@ -352,7 +399,7 @@ def index_addresses(db, places, place_geoms, tree):
     for x, tms_y, blob in cur:
         try:
             data = gzip.decompress(blob)
-            tile = mapbox_vector_tile.decode(data)
+            tile = decode_address_tile(data)
         except Exception:
             continue
         layer = tile.get("addresses")
@@ -360,6 +407,9 @@ def index_addresses(db, places, place_geoms, tree):
             continue
         extent = layer.get("extent", 4096)
 
+        records = []
+        lons = []
+        lats = []
         for feat in layer["features"]:
             if feat["geometry"]["type"] != "Point":
                 continue
@@ -379,39 +429,47 @@ def index_addresses(db, places, place_geoms, tree):
             if not street_norm:
                 continue
             postcode = (props.get("postcode") or "").strip()
+            records.append((street, street_norm, postcode, lat, lon))
+            lons.append(lon)
+            lats.append(lat)
 
-            pt = Point(lon, lat)
-            matched = False
-            for idx in tree.query(pt):
-                if not place_geoms[idx].contains(pt):
-                    continue
-                pid = places[idx]["id"]
-                matched = True
-                place_addr_count[pid] += 1
-                place_streets_seen[pid].add(street_norm)
+        if not records:
+            continue
 
-                sk = (pid, street_norm)
-                sr = street_runs.get(sk)
-                if sr is None:
-                    sr = [0, 0.0, 0.0, street]
-                    street_runs[sk] = sr
-                sr[0] += 1
-                sr[1] += lat
-                sr[2] += lon
+        points = shapely_points(lons, lats)
+        # `within` preserves the strict boundary behavior of polygon.contains.
+        point_indices, place_indices = tree.query(points, predicate="within")
+        matched = [False] * len(records)
+        for point_idx, place_idx in zip(point_indices, place_indices):
+            point_idx = int(point_idx)
+            place_idx = int(place_idx)
+            street, street_norm, postcode, lat, lon = records[point_idx]
+            matched[point_idx] = True
+            pid = places[place_idx]["id"]
+            place_addr_count[pid] += 1
+            place_streets_seen[pid].add(street_norm)
 
-                street_tiles[(pid, street_norm, postcode)].add((x, tms_y))
+            sk = (pid, street_norm)
+            sr = street_runs.get(sk)
+            if sr is None:
+                sr = [0, 0.0, 0.0, street]
+                street_runs[sk] = sr
+            sr[0] += 1
+            sr[1] += lat
+            sr[2] += lon
 
-                if postcode:
-                    pk = (pid, street_norm, postcode)
-                    pr = pc_runs.get(pk)
-                    if pr is None:
-                        pr = [0, 0.0, 0.0]
-                        pc_runs[pk] = pr
-                    pr[0] += 1
-                    pr[1] += lat
-                    pr[2] += lon
-            if not matched:
-                unassigned += 1
+            street_tiles[(pid, street_norm, postcode)].add((x, tms_y))
+
+            if postcode:
+                pk = (pid, street_norm, postcode)
+                pr = pc_runs.get(pk)
+                if pr is None:
+                    pr = [0, 0.0, 0.0]
+                    pc_runs[pk] = pr
+                pr[0] += 1
+                pr[1] += lat
+                pr[2] += lon
+        unassigned += matched.count(False)
 
     return {
         "addr_total": addr_total,
@@ -515,7 +573,7 @@ def main():
     print(f"[2/4] Indexing addresses against places", flush=True)
     t1 = time.time()
     db = sqlite3.connect(args.mbtiles)
-    idx = index_addresses(db, h.places, place_geoms, tree)
+    idx = index_addresses(db, h.places, tree)
     pct = 100 * idx["unassigned"] / max(1, idx["addr_total"])
     print(f"      {idx['addr_total']} addresses, "
           f"{idx['unassigned']} unassigned ({pct:.2f}%) — "

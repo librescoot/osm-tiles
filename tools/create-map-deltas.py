@@ -214,7 +214,7 @@ def main():
                 finally:
                     conn.close()
                 patch = tmp / f"{region}-{base['version']}.hdiff"
-                subprocess.run([encoder, "-m-4", "-p-2", "-c-zstd-20",
+                subprocess.run([encoder, "-m-4", "-p-4", "-c-zstd-20",
                                 str(base_canonical), str(target_canonical), str(patch)], check=True)
                 subprocess.run([encoder, "-t", str(base_canonical), str(target_canonical),
                                 str(patch)], check=True)

@@ -163,12 +163,22 @@ class MapDeltaTest(unittest.TestCase):
                 self.assertEqual(release["tag_name"], "tiles-20261001T000000Z")
                 shutil.copyfile(base, destination)
 
+            commands = []
+            real_run = mod.subprocess.run
+
+            def record_run(args, **kwargs):
+                commands.append(args)
+                return real_run(args, **kwargs)
+
             with mock.patch.object(mod, "release_pages", return_value=releases[0]), \
                  mock.patch.object(mod, "download_asset", side_effect=fetch), \
+                 mock.patch.object(mod.subprocess, "run", side_effect=record_run), \
                  mock.patch.object(mod.sys, "argv",
                                    ["generator", str(root / "artifacts"), "--bases", "1"]), \
                  mock.patch.dict(os.environ, {"PATH": str(Path(encoder).parent) + ":" + os.environ["PATH"]}):
                 mod.main()
+            self.assertEqual(commands[0][1:4], ["-m-4", "-p-4", "-c-zstd-20"])
+            self.assertEqual(commands[1][1], "-t")
             patch = artwork / "tiles_bremen.from-tiles-20261001T000000Z.hdelta"
             self.assertTrue(patch.is_file())
             header, payload = mod.read_container(patch)

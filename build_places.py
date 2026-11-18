@@ -567,7 +567,13 @@ def main():
     t0 = time.time()
     print(f"[1/4] Extracting place polygons from {args.pbf}", flush=True)
     h = PlaceCollector()
-    h.apply_file(args.pbf, locations=True, idx=args.idx)
+    boundary_filter = osmium.filter.TagFilter(("boundary", "administrative"))
+    h.apply_file(
+        args.pbf,
+        locations=True,
+        idx=args.idx,
+        filters=[boundary_filter],
+    )
     print(f"      {len(h.places)} places, "
           f"{h.skipped_l4_non_city} L4 non-city skipped, "
           f"{h.skipped_l6_non_city} L6 non-city skipped, "

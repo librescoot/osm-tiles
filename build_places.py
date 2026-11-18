@@ -44,6 +44,8 @@ DIRECTION_STOP = {"West", "Ost", "Nord", "Süd"}
 STREET_NAME_SUFFIX_RE = re.compile(
     r"(straße|strasse|weg|allee|gasse|platz|ring)$", re.IGNORECASE
 )
+MVT_POINT = 1
+MVT_SINGLE_POINT_MOVE_TO = (1 << 3) | 1
 
 
 @lru_cache(maxsize=262144)
@@ -171,7 +173,7 @@ def gen_aliases(tags: dict, name: str):
 
 
 def decode_address_tile(blob):
-    """Decode only the address layer and fields used by the index."""
+    """Decode compact address records from the MVT layer used by the index."""
     vector_tile = vector_tile_decoder.TileData(blob)
     layer = next((layer for layer in vector_tile.tile.layers
                   if layer.name == "addresses"), None)
@@ -180,39 +182,49 @@ def decode_address_tile(blob):
 
     keys = layer.keys
     values = layer.values
-    selected_keys = {i for i, key in enumerate(keys)
+    selected_keys = {i: key for i, key in enumerate(keys)
                      if key in ("street", "name", "postcode")}
     features = []
     for feature in layer.features:
+        if feature.type != MVT_POINT:
+            continue
+        geometry = feature.geometry
+        if (len(geometry) == 3 and
+                geometry[0] == MVT_SINGLE_POINT_MOVE_TO):
+            # A single MoveTo has one ZigZag-encoded x/y delta pair.
+            px = (geometry[1] >> 1) ^ -(geometry[1] & 1)
+            py = layer.extent - ((geometry[2] >> 1) ^ -(geometry[2] & 1))
+        else:
+            decoded = vector_tile.parse_geometry(
+                geom=geometry,
+                ftype=feature.type,
+                extent=layer.extent,
+                y_coord_down=False,
+                transformer=None,
+            )
+            if decoded["type"] != "Point":
+                continue
+            px, py = decoded["coordinates"]
+
+        street = None
+        name = None
+        postcode = None
         tags = feature.tags
-        props = {}
         assert len(tags) % 2 == 0, "Unexpected number of tags"
         for i in range(0, len(tags), 2):
-            key_idx = tags[i]
-            if key_idx in selected_keys:
-                props[keys[key_idx]] = vector_tile_decoder.TileData.parse_value(
-                    values[tags[i + 1]]
-                )
-        geometry = vector_tile.parse_geometry(
-            geom=feature.geometry,
-            ftype=feature.type,
-            extent=layer.extent,
-            y_coord_down=False,
-            transformer=None,
-        )
-        features.append({
-            "geometry": geometry,
-            "properties": props,
-            "id": feature.id,
-            "type": "Feature",
-        })
+            key = selected_keys.get(tags[i])
+            if key is None:
+                continue
+            value = vector_tile_decoder.TileData.parse_value(values[tags[i + 1]])
+            if key == "street":
+                street = value
+            elif key == "name":
+                name = value
+            elif key == "postcode":
+                postcode = value
+        features.append((px, py, street, name, postcode))
 
-    return {"addresses": {
-        "extent": layer.extent,
-        "version": layer.version,
-        "features": features,
-        "type": "FeatureCollection",
-    }}
+    return {"addresses": {"extent": layer.extent, "features": features}}
 
 
 class PlaceCollector(osmium.SimpleHandler):
@@ -410,25 +422,21 @@ def index_addresses(db, places, tree):
         records = []
         lons = []
         lats = []
-        for feat in layer["features"]:
-            if feat["geometry"]["type"] != "Point":
-                continue
+        for px, py, street_value, name_value, postcode_value in layer["features"]:
             addr_total += 1
-            px, py = feat["geometry"]["coordinates"]
             lon = (x + px / extent) / n * 360.0 - 180.0
             slippy_y = n - 1 - tms_y
             ymerc = (slippy_y + 1 - py / extent) / n
             zz = math.pi * (1 - 2 * ymerc)
             lat = math.degrees(math.atan(math.sinh(zz)))
 
-            props = feat["properties"]
-            street = (props.get("street") or props.get("name") or "").strip()
+            street = (street_value or name_value or "").strip()
             if not street:
                 continue
             street_norm = normalize(street)
             if not street_norm:
                 continue
-            postcode = (props.get("postcode") or "").strip()
+            postcode = (postcode_value or "").strip()
             records.append((street, street_norm, postcode, lat, lon))
             lons.append(lon)
             lats.append(lat)

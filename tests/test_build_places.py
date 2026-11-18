@@ -28,12 +28,24 @@ class BuildPlacesDecoderTest(unittest.TestCase):
         encoded = mapbox_vector_tile.encode([
             {
                 "name": "addresses",
-                "features": [{
-                    "geometry": {"type": "Point", "coordinates": [2048, 2048]},
-                    "properties": {
-                        "street": "Hauptstraße", "postcode": "12345", "ref": "unused",
+                "features": [
+                    {
+                        "geometry": {"type": "Point", "coordinates": [700, 1200]},
+                        "properties": {
+                            "street": "Hauptstraße", "postcode": "12345", "ref": "unused",
+                        },
                     },
-                }],
+                    {
+                        "geometry": {"type": "Point", "coordinates": [3000, 3200]},
+                        "properties": {"name": "Nebenweg", "postcode": "54321"},
+                    },
+                    {
+                        "geometry": {"type": "MultiPoint", "coordinates": [
+                            [100, 100], [200, 200],
+                        ]},
+                        "properties": {"name": "ignored"},
+                    },
+                ],
             },
             {
                 "name": "buildings",
@@ -48,12 +60,23 @@ class BuildPlacesDecoderTest(unittest.TestCase):
 
         decoded = decode_address_tile(encoded)
         expected = mapbox_vector_tile.decode(encoded)["addresses"]
+        expected_features = []
         for feature in expected["features"]:
-            feature["properties"] = {
-                key: value for key, value in feature["properties"].items()
-                if key in {"street", "name", "postcode"}
-            }
-        self.assertEqual(decoded, {"addresses": expected})
+            if feature["geometry"]["type"] != "Point":
+                continue
+            props = feature["properties"]
+            expected_features.append((
+                *feature["geometry"]["coordinates"],
+                props.get("street"),
+                props.get("name"),
+                props.get("postcode"),
+            ))
+        self.assertEqual(decoded, {
+            "addresses": {
+                "extent": expected["extent"],
+                "features": expected_features,
+            },
+        })
         self.assertEqual(
             decode_address_tile(mapbox_vector_tile.encode([{
                 "name": "buildings",
@@ -84,14 +107,10 @@ class BuildPlacesDecoderTest(unittest.TestCase):
         layer = {"addresses": {
             "extent": extent,
             "features": [
-                {"geometry": {"type": "Point", "coordinates": [px, py]},
-                 "properties": {"street": "Hauptstraße", "postcode": "12345"}},
-                {"geometry": {"type": "Point", "coordinates": [px, py]},
-                 "properties": {"name": "Hauptstr"}},
-                {"geometry": {"type": "Point", "coordinates": [4095, py]},
-                 "properties": {"street": "Aussenweg"}},
-                {"geometry": {"type": "Point", "coordinates": [px, py]},
-                 "properties": {}},
+                (px, py, "Hauptstraße", None, "12345"),
+                (px, py, None, "Hauptstr", None),
+                (4095, py, "Aussenweg", None, None),
+                (px, py, None, None, None),
             ],
         }}
         db = sqlite3.connect(":memory:")

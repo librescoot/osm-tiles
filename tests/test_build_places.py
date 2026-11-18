@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import mapbox_vector_tile
+from mapbox_vector_tile.decoder import TileData
 from shapely.geometry import Polygon
 from shapely.strtree import STRtree
 
@@ -84,6 +85,37 @@ class BuildPlacesDecoderTest(unittest.TestCase):
             }])),
             {},
         )
+
+    def test_selected_values_are_decoded_once_per_tile_value(self):
+        encoded = mapbox_vector_tile.encode([{
+            "name": "addresses",
+            "features": [
+                {
+                    "geometry": {"type": "Point", "coordinates": [700, 1200]},
+                    "properties": {"street": "Hauptstraße", "postcode": "12345"},
+                },
+                {
+                    "geometry": {"type": "Point", "coordinates": [3000, 3200]},
+                    "properties": {"street": "Hauptstraße", "postcode": "12345"},
+                },
+            ],
+        }])
+        layer = TileData(encoded).tile.layers[0]
+        selected_keys = {i for i, key in enumerate(layer.keys)
+                         if key in {"street", "name", "postcode"}}
+        value_indices = set()
+        occurrences = 0
+        for feature in layer.features:
+            for i in range(0, len(feature.tags), 2):
+                if feature.tags[i] in selected_keys:
+                    occurrences += 1
+                    value_indices.add(feature.tags[i + 1])
+
+        with patch.object(TileData, "parse_value", wraps=TileData.parse_value) as parse_value:
+            decode_address_tile(encoded)
+
+        self.assertEqual(parse_value.call_count, len(value_indices))
+        self.assertLess(parse_value.call_count, occurrences)
 
     def test_batched_index_matches_strict_contains_and_address_accounting(self):
         extent = 4096

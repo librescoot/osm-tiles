@@ -185,6 +185,7 @@ def decode_address_tile(blob):
     selected_keys = {i: key for i, key in enumerate(keys)
                      if key in ("street", "name", "postcode")}
     features = []
+    parsed_values = {}
     for feature in layer.features:
         if feature.type != MVT_POINT:
             continue
@@ -215,7 +216,11 @@ def decode_address_tile(blob):
             key = selected_keys.get(tags[i])
             if key is None:
                 continue
-            value = vector_tile_decoder.TileData.parse_value(values[tags[i + 1]])
+            value_idx = tags[i + 1]
+            value = parsed_values.get(value_idx)
+            if value is None:
+                value = vector_tile_decoder.TileData.parse_value(values[value_idx])
+                parsed_values[value_idx] = value
             if key == "street":
                 street = value
             elif key == "name":
